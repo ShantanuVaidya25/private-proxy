@@ -1,26 +1,43 @@
 /**
- * ATTENDFLOW - Smart Manual Attendance Tracking Engine
- * Formula: no. of classes attended / total classes = attendance %
+ * ATTENDFLOW - University Attendance & Timetable ERP Portal
+ * Comprehensive University Grade Formula & Management
  */
 
 (function () {
   'use strict';
 
   // --- Constants & Storage Keys ---
-  const STORAGE_KEY = 'attendflow_data_v1';
+  const STORAGE_KEY = 'attendflow_university_v2';
+  const OLD_STORAGE_KEY = 'attendflow_data_v1';
   const THEME_KEY = 'attendflow_theme_v1';
   const DEFAULT_TARGET = 75;
 
-  // --- Default Sample Subjects for First Load ---
-  const DEFAULT_SUBJECTS = [
+  const DAYS = [
+    { key: 'mon', label: 'Monday' },
+    { key: 'tue', label: 'Tuesday' },
+    { key: 'wed', label: 'Wednesday' },
+    { key: 'thu', label: 'Thursday' },
+    { key: 'fri', label: 'Friday' },
+    { key: 'sat', label: 'Saturday' }
+  ];
+
+  // --- Default University Sample Courses ---
+  const DEFAULT_COURSES = [
     {
       id: 'sub_1',
       name: 'Data Structures & Algorithms',
       code: 'CS201',
+      type: 'theory',
+      faculty: 'Dr. A. Sharma',
       targetPercentage: 75,
       color: '#6366f1',
-      baseAttended: 12,
-      baseTotal: 15,
+      baseAttended: 14,
+      baseTotal: 16,
+      timetable: [
+        { day: 'mon', time: '09:00 AM - 10:00 AM' },
+        { day: 'wed', time: '10:00 AM - 11:00 AM' },
+        { day: 'fri', time: '11:00 AM - 12:00 PM' }
+      ],
       logs: [
         { id: 'log_1_1', date: getRecentDateStr(2), status: 'present', timestamp: Date.now() - 172800000 },
         { id: 'log_1_2', date: getRecentDateStr(1), status: 'present', timestamp: Date.now() - 86400000 },
@@ -30,12 +47,18 @@
     },
     {
       id: 'sub_2',
-      name: 'Computer Networks',
-      code: 'CS302',
-      targetPercentage: 75,
-      color: '#06b6d4',
+      name: 'Computer Networks Lab',
+      code: 'CS302L',
+      type: 'lab',
+      faculty: 'Prof. R. Mehta',
+      targetPercentage: 80,
+      color: '#a855f7',
       baseAttended: 8,
-      baseTotal: 12,
+      baseTotal: 10,
+      timetable: [
+        { day: 'tue', time: '02:00 PM - 04:00 PM' },
+        { day: 'thu', time: '02:00 PM - 04:00 PM' }
+      ],
       logs: [
         { id: 'log_2_1', date: getRecentDateStr(3), status: 'present', timestamp: Date.now() - 259200000 },
         { id: 'log_2_2', date: getRecentDateStr(1), status: 'absent', timestamp: Date.now() - 86400000 }
@@ -46,12 +69,19 @@
       id: 'sub_3',
       name: 'Database Management Systems',
       code: 'CS204',
-      targetPercentage: 80,
+      type: 'theory',
+      faculty: 'Dr. V. Rao',
+      targetPercentage: 75,
       color: '#ec4899',
-      baseAttended: 14,
-      baseTotal: 16,
+      baseAttended: 12,
+      baseTotal: 15,
+      timetable: [
+        { day: 'mon', time: '11:00 AM - 12:00 PM' },
+        { day: 'tue', time: '10:00 AM - 11:00 AM' },
+        { day: 'thu', time: '09:00 AM - 10:00 AM' }
+      ],
       logs: [
-        { id: 'log_3_1', date: getRecentDateStr(2), status: 'present', timestamp: Date.now() - 172800000 },
+        { id: 'log_3_1', date: getRecentDateStr(2), status: 'od', timestamp: Date.now() - 172800000 },
         { id: 'log_3_2', date: getRecentDateStr(0), status: 'present', timestamp: Date.now() }
       ],
       createdAt: Date.now() - 800000
@@ -65,23 +95,33 @@
   }
 
   // --- State ---
-  let subjects = loadSubjects();
-  let selectedSubjectColor = '#6366f1';
-  let activeHistorySubjectId = null;
+  let courses = loadCourses();
+  let selectedColor = '#6366f1';
+  let activeHistoryCourseId = null;
 
   // --- DOM Elements ---
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const themeSunIcon = document.getElementById('themeSunIcon');
   const themeMoonIcon = document.getElementById('themeMoonIcon');
   
+  // Tabs
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabViews = {
+    'dashboard': document.getElementById('view-dashboard'),
+    'schedule': document.getElementById('view-schedule'),
+    'subjects': document.getElementById('view-subjects'),
+    'simulator': document.getElementById('view-simulator'),
+    'timetable-builder': document.getElementById('view-timetable-builder')
+  };
+
+  // Dashboard Overview Elements
   const totalAttendedVal = document.getElementById('totalAttendedVal');
   const totalClassesVal = document.getElementById('totalClassesVal');
   const totalPercentageVal = document.getElementById('totalPercentageVal');
-  const targetThresholdBadge = document.getElementById('targetThresholdBadge');
+  const examEligibilityBadge = document.getElementById('examEligibilityBadge');
   const overallForecastBox = document.getElementById('overallForecastBox');
   const forecastIcon = document.getElementById('forecastIcon');
   const overallForecastText = document.getElementById('overallForecastText');
-  
   const overallRadialBar = document.getElementById('overallRadialBar');
   const radialPercentageText = document.getElementById('radialPercentageText');
   const radialStatusLabel = document.getElementById('radialStatusLabel');
@@ -89,25 +129,53 @@
   const statTotalSubjects = document.getElementById('statTotalSubjects');
   const statTotalAttended = document.getElementById('statTotalAttended');
   const statTotalMissed = document.getElementById('statTotalMissed');
+  const statTotalOD = document.getElementById('statTotalOD');
 
-  const dailyAttendanceDate = document.getElementById('dailyAttendanceDate');
-  const dailyChecklistContainer = document.getElementById('dailyChecklistContainer');
-  const markAllPresentBtn = document.getElementById('markAllPresentBtn');
+  // Schedule Views
+  const dashboardTodayDateStr = document.getElementById('dashboardTodayDateStr');
+  const dashboardSchedulePreview = document.getElementById('dashboardSchedulePreview');
+  const scheduleViewDate = document.getElementById('scheduleViewDate');
+  const fullScheduleGrid = document.getElementById('fullScheduleGrid');
+  const markScheduleAllPresentBtn = document.getElementById('markScheduleAllPresentBtn');
 
+  // Courses View
   const subjectsGrid = document.getElementById('subjectsGrid');
   const subjectSearchInput = document.getElementById('subjectSearchInput');
   const addSubjectBtn = document.getElementById('addSubjectBtn');
   const addSubjectNavBtn = document.getElementById('addSubjectNavBtn');
 
-  // Subject Modal
+  // What-If Simulator
+  const simSubjectSelect = document.getElementById('simSubjectSelect');
+  const simBunkSlider = document.getElementById('simBunkSlider');
+  const simBunkVal = document.getElementById('simBunkVal');
+  const simAttendSlider = document.getElementById('simAttendSlider');
+  const simAttendVal = document.getElementById('simAttendVal');
+  const simPercentDisplay = document.getElementById('simPercentDisplay');
+  const simStatusPill = document.getElementById('simStatusPill');
+  const simExplanationText = document.getElementById('simExplanationText');
+  const resetSimBtn = document.getElementById('resetSimBtn');
+
+  // Timetable Setup
+  const timetableSetupGrid = document.getElementById('timetableSetupGrid');
+  const openAddSlotModalBtn = document.getElementById('openAddSlotModalBtn');
+  const slotModalOverlay = document.getElementById('slotModalOverlay');
+  const slotForm = document.getElementById('slotForm');
+  const slotSubjectSelect = document.getElementById('slotSubjectSelect');
+  const slotDaySelect = document.getElementById('slotDaySelect');
+  const slotTimeInput = document.getElementById('slotTimeInput');
+  const closeSlotModalBtn = document.getElementById('closeSlotModalBtn');
+  const cancelSlotModalBtn = document.getElementById('cancelSlotModalBtn');
+
+  // Course Modal
   const subjectModalOverlay = document.getElementById('subjectModalOverlay');
   const subjectModalTitle = document.getElementById('subjectModalTitle');
   const subjectForm = document.getElementById('subjectForm');
   const editSubjectId = document.getElementById('editSubjectId');
   const subjectNameInput = document.getElementById('subjectNameInput');
   const subjectCodeInput = document.getElementById('subjectCodeInput');
+  const subjectTypeInput = document.getElementById('subjectTypeInput');
+  const subjectFacultyInput = document.getElementById('subjectFacultyInput');
   const subjectTargetInput = document.getElementById('subjectTargetInput');
-  const initialCountsRow = document.getElementById('initialCountsRow');
   const initialAttendedInput = document.getElementById('initialAttendedInput');
   const initialTotalInput = document.getElementById('initialTotalInput');
   const colorPickerGroup = document.getElementById('colorPickerGroup');
@@ -130,7 +198,7 @@
   const closeHistoryModalBtn = document.getElementById('closeHistoryModalBtn');
   const closeHistoryBottomBtn = document.getElementById('closeHistoryBottomBtn');
 
-  // Backup & Restore
+  // Export / Import
   const exportDataBtn = document.getElementById('exportDataBtn');
   const importDataBtn = document.getElementById('importDataBtn');
   const importFileInput = document.getElementById('importFileInput');
@@ -139,12 +207,12 @@
   // --- Initialization ---
   function init() {
     initTheme();
-    initDatePicker();
+    initDates();
     attachEventListeners();
     renderAll();
   }
 
-  // --- Theme Handling ---
+  // --- Theme Management ---
   function initTheme() {
     const savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -170,65 +238,131 @@
     }
   }
 
-  // --- Date Picker Defaults ---
-  function initDatePicker() {
+  // --- Dates Setup ---
+  function initDates() {
     const today = new Date().toISOString().split('T')[0];
-    dailyAttendanceDate.value = today;
+    scheduleViewDate.value = today;
     historyEntryDate.value = today;
+    
+    const dayName = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    dashboardTodayDateStr.textContent = dayName;
   }
 
-  // --- Storage Functions ---
-  function loadSubjects() {
+  // --- Storage Management ---
+  function loadCourses() {
     try {
-      const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        return JSON.parse(data);
+      const v2Data = localStorage.getItem(STORAGE_KEY);
+      if (v2Data) return JSON.parse(v2Data);
+
+      // Check migration from v1
+      const v1Data = localStorage.getItem(OLD_STORAGE_KEY);
+      if (v1Data) {
+        const parsedV1 = JSON.parse(v1Data);
+        return parsedV1.map(sub => ({
+          ...sub,
+          type: sub.type || 'theory',
+          faculty: sub.faculty || 'Professor',
+          timetable: sub.timetable || []
+        }));
       }
     } catch (e) {
-      console.error('Failed to parse stored subjects:', e);
+      console.error('Failed to load courses from storage:', e);
     }
-    return DEFAULT_SUBJECTS;
+    return DEFAULT_COURSES;
   }
 
-  function saveSubjects() {
+  function saveCourses() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(subjects));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(courses));
     } catch (e) {
-      console.error('Failed to save subjects to localStorage:', e);
-      showToast('Error saving data to local storage', 'danger');
+      console.error('Failed to save to localStorage:', e);
+      showToast('Error saving data', 'danger');
     }
   }
 
-  // --- Attendance Calculation Engine ---
-  /**
-   * Calculates attended count, total count, percentage, and forecast for a subject.
-   */
-  function calculateSubjectStats(subject) {
-    const logs = subject.logs || [];
-    const logAttended = logs.filter(l => l.status === 'present').length;
-    const logAbsent = logs.filter(l => l.status === 'absent').length;
+  // --- Tab Navigation ---
+  window.switchTab = function(tabName) {
+    tabButtons.forEach(btn => {
+      if (btn.getAttribute('data-tab') === tabName) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
 
-    const attended = (Number(subject.baseAttended) || 0) + logAttended;
-    const total = (Number(subject.baseTotal) || 0) + logAttended + logAbsent;
-    const target = Number(subject.targetPercentage) || DEFAULT_TARGET;
+    Object.keys(tabViews).forEach(key => {
+      if (key === tabName && tabViews[key]) {
+        tabViews[key].classList.add('active');
+      } else if (tabViews[key]) {
+        tabViews[key].classList.remove('active');
+      }
+    });
 
-    let percentage = 0;
-    if (total > 0) {
-      percentage = (attended / total) * 100;
+    if (tabName === 'simulator') {
+      populateSimulatorSelect();
+      updateSimulatorResults();
+    } else if (tabName === 'timetable-builder') {
+      renderTimetableBuilder();
+    } else if (tabName === 'schedule') {
+      renderFullSchedule();
     }
+  };
 
+  // --- University Attendance Math Engine ---
+  /**
+   * Calculates subject stats taking into account:
+   * - Course weight (e.g. Theory = 1, Lab = 2)
+   * - University statuses: present (+weight, +weight), od (+weight, +weight), absent (0, +weight), cancelled (0, 0)
+   */
+  function calculateCourseStats(course) {
+    const weight = course.type === 'lab' ? 2 : 1;
+    const logs = course.logs || [];
+
+    let logAttended = 0;
+    let logTotal = 0;
+    let logOD = 0;
+    let logMissed = 0;
+    let logCancelled = 0;
+
+    logs.forEach(log => {
+      if (log.status === 'present') {
+        logAttended += weight;
+        logTotal += weight;
+      } else if (log.status === 'od') {
+        logAttended += weight;
+        logTotal += weight;
+        logOD += weight;
+      } else if (log.status === 'absent') {
+        logTotal += weight;
+        logMissed += weight;
+      } else if (log.status === 'cancelled') {
+        logCancelled += weight;
+      }
+    });
+
+    const attended = (Number(course.baseAttended) || 0) + logAttended;
+    const total = (Number(course.baseTotal) || 0) + logTotal;
+    const target = Number(course.targetPercentage) || DEFAULT_TARGET;
+
+    const percentage = total > 0 ? (attended / total) * 100 : 0;
     const formattedPercentage = total > 0 ? percentage.toFixed(1) : '0.0';
 
-    // Status: safe, warning, danger
+    // Exam Eligibility / Safety Status
     let status = 'safe';
+    let examStatus = 'Eligible for Exams';
+
     if (total === 0) {
       status = 'safe';
+      examStatus = 'No Records Yet';
     } else if (percentage >= target) {
       status = 'safe';
-    } else if (percentage >= target - 10) {
+      examStatus = 'Exam Eligible';
+    } else if (percentage >= 65) {
       status = 'warning';
+      examStatus = 'Condonation Zone (65-74%)';
     } else {
       status = 'danger';
+      examStatus = 'Debarred / Defaulter (<65%)';
     }
 
     // Forecast Calculation
@@ -237,20 +371,16 @@
     let attendNeeded = 0;
 
     if (total === 0) {
-      forecast = 'No classes recorded yet. Start tracking today!';
+      forecast = 'No classes conducted yet.';
     } else if (percentage >= target) {
-      // Formula: attended / (total + x) >= target/100
-      // x = floor(attended / (target/100) - total)
       const tRatio = target / 100;
       bunkCount = Math.floor((attended / tRatio) - total);
       if (bunkCount <= 0) {
-        forecast = `On track at ${formattedPercentage}%! Attend next class to maintain target.`;
+        forecast = `On track at ${formattedPercentage}%! Don't miss next class.`;
       } else {
-        forecast = `You can safely miss ${bunkCount} class${bunkCount > 1 ? 'es' : ''} and maintain ≥ ${target}%.`;
+        forecast = `Safe to bunk ${bunkCount} class${bunkCount > 1 ? 'es' : ''} without falling below ${target}%.`;
       }
     } else {
-      // Formula: (attended + y) / (total + y) >= target/100
-      // y = ceil((target/100 * total - attended) / (1 - target/100))
       const tRatio = target / 100;
       attendNeeded = Math.ceil(((tRatio * total) - attended) / (1 - tRatio));
       if (attendNeeded <= 0) attendNeeded = 1;
@@ -261,27 +391,33 @@
       attended,
       total,
       missed: total - attended,
+      od: logOD,
+      cancelled: logCancelled,
       target,
       percentage,
       formattedPercentage,
       status,
+      examStatus,
       forecast,
       bunkCount,
-      attendNeeded
+      attendNeeded,
+      weight
     };
   }
 
   /**
-   * Calculates overall attendance metrics across all subjects.
+   * Overall University Attendance Aggregate
    */
   function calculateOverallStats() {
     let totalAttended = 0;
     let totalClasses = 0;
+    let totalOD = 0;
 
-    subjects.forEach(subject => {
-      const stats = calculateSubjectStats(subject);
+    courses.forEach(course => {
+      const stats = calculateCourseStats(course);
       totalAttended += stats.attended;
       totalClasses += stats.total;
+      totalOD += stats.od;
     });
 
     const totalMissed = totalClasses - totalAttended;
@@ -289,290 +425,301 @@
     const formattedPercentage = totalClasses > 0 ? percentage.toFixed(1) : '0.0';
 
     let status = 'safe';
-    if (totalClasses === 0) {
-      status = 'safe';
-    } else if (percentage >= DEFAULT_TARGET) {
-      status = 'safe';
-    } else if (percentage >= DEFAULT_TARGET - 10) {
-      status = 'warning';
-    } else {
-      status = 'danger';
-    }
-
-    // Overall recommendation
-    let forecast = '';
+    let examStatus = 'Eligible for Exams';
     let icon = '🎯';
+    let forecast = '';
 
-    if (subjects.length === 0) {
-      forecast = 'Click "+ Add Subject" to start tracking your attendance.';
-      icon = '📋';
+    if (courses.length === 0) {
+      examStatus = 'No Courses';
+      forecast = 'Click "+ Add Course" to configure your semester subjects.';
     } else if (totalClasses === 0) {
-      forecast = 'Mark your first lecture attendance below to view live predictions.';
-      icon = '💡';
+      examStatus = 'Semester Start';
+      forecast = 'Mark attendance from today\'s timetable to monitor progress.';
     } else if (percentage >= DEFAULT_TARGET) {
+      status = 'safe';
+      examStatus = 'Exam Eligible (Safe)';
+      icon = '🎓';
       const tRatio = DEFAULT_TARGET / 100;
       const bunks = Math.floor((totalAttended / tRatio) - totalClasses);
-      icon = '🎉';
       if (bunks <= 0) {
-        forecast = `Great job! Your attendance is ${formattedPercentage}%. Attend upcoming lectures to stay above ${DEFAULT_TARGET}%.`;
+        forecast = `Good standing (${formattedPercentage}%)! Attend upcoming classes to stay above ${DEFAULT_TARGET}%.`;
       } else {
-        forecast = `Excellent! You are safely above target. You can bunk ${bunks} total lecture${bunks > 1 ? 's' : ''} across subjects.`;
+        forecast = `Excellent! You can safely miss up to ${bunks} lecture${bunks > 1 ? 's' : ''} across courses.`;
       }
-    } else {
+    } else if (percentage >= 65) {
+      status = 'warning';
+      examStatus = 'Condonation Fine Zone';
+      icon = '⚠️';
       const tRatio = DEFAULT_TARGET / 100;
       const needed = Math.ceil(((tRatio * totalClasses) - totalAttended) / (1 - tRatio));
-      icon = '⚠️';
-      forecast = `Below target! You need to attend ${needed} more class${needed > 1 ? 'es' : ''} consecutively to reach ${DEFAULT_TARGET}%.`;
+      forecast = `Warning: ${formattedPercentage}% is below 75%. Attend next ${needed} classes to clear fine list.`;
+    } else {
+      status = 'danger';
+      examStatus = 'Debarred / Defaulter';
+      icon = '🚨';
+      const tRatio = DEFAULT_TARGET / 100;
+      const needed = Math.ceil(((tRatio * totalClasses) - totalAttended) / (1 - tRatio));
+      forecast = `Critical Defaulter! You must attend ${needed} more classes to be permitted for semester exams.`;
     }
 
     return {
       totalAttended,
       totalClasses,
       totalMissed,
+      totalOD,
       percentage,
       formattedPercentage,
       status,
+      examStatus,
       forecast,
       icon,
-      subjectCount: subjects.length
+      courseCount: courses.length
     };
   }
 
   // --- Rendering UI ---
   function renderAll() {
     renderOverallDashboard();
-    renderDailyChecklist();
+    renderDashboardSchedulePreview();
+    renderFullSchedule();
     renderSubjectsGrid();
+    renderTimetableBuilder();
+    populateSimulatorSelect();
+    updateSimulatorResults();
   }
 
   function renderOverallDashboard() {
     const stats = calculateOverallStats();
 
-    // Equation Formula Box
     totalAttendedVal.textContent = stats.totalAttended;
     totalClassesVal.textContent = stats.totalClasses;
     totalPercentageVal.textContent = `${stats.formattedPercentage}%`;
+
+    // Exam Badge
+    examEligibilityBadge.className = `exam-status-badge ${stats.status}`;
+    examEligibilityBadge.textContent = stats.examStatus;
 
     // Forecast Box
     overallForecastBox.className = `forecast-box ${stats.status}`;
     forecastIcon.textContent = stats.icon;
     overallForecastText.textContent = stats.forecast;
 
-    // Radial Progress Indicator
-    // Circumference of r=55 is 2 * PI * 55 ≈ 345.57 -> svg viewBox 140x140 with r=55 circumference = 345.57
+    // Radial Progress
     const radius = 55;
     const circumference = 2 * Math.PI * radius; // ~345.57
     overallRadialBar.style.strokeDasharray = `${circumference}`;
-    
     const offset = stats.totalClasses > 0 
       ? circumference - (circumference * (stats.percentage / 100))
       : circumference;
-    
     overallRadialBar.style.strokeDashoffset = offset;
     overallRadialBar.className = `radial-bar ${stats.status}`;
     radialPercentageText.textContent = `${Math.round(stats.percentage)}%`;
 
-    if (stats.totalClasses === 0) {
-      radialStatusLabel.textContent = 'No Data';
-    } else if (stats.status === 'safe') {
-      radialStatusLabel.textContent = 'Safe Zone';
-    } else if (stats.status === 'warning') {
-      radialStatusLabel.textContent = 'Warning';
-    } else {
-      radialStatusLabel.textContent = 'Critical';
-    }
+    if (stats.totalClasses === 0) radialStatusLabel.textContent = 'No Data';
+    else if (stats.status === 'safe') radialStatusLabel.textContent = 'Eligible';
+    else if (stats.status === 'warning') radialStatusLabel.textContent = 'Warning';
+    else radialStatusLabel.textContent = 'Debarred';
 
-    // Quick Stats Row
-    statTotalSubjects.textContent = stats.subjectCount;
+    statTotalSubjects.textContent = stats.courseCount;
     statTotalAttended.textContent = stats.totalAttended;
     statTotalMissed.textContent = stats.totalMissed;
+    statTotalOD.textContent = stats.totalOD;
   }
 
   /**
-   * Renders the quick daily check-in panel for the selected date.
+   * Returns list of scheduled slots for a given date.
    */
-  function renderDailyChecklist() {
-    const selectedDate = dailyAttendanceDate.value || new Date().toISOString().split('T')[0];
-    dailyChecklistContainer.innerHTML = '';
+  function getScheduledSlotsForDate(dateStr) {
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    const dayIndex = dateObj.getDay(); // 0 = Sun, 1 = Mon ...
+    const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const currentDayKey = dayKeys[dayIndex];
 
-    if (subjects.length === 0) {
-      dailyChecklistContainer.innerHTML = `
-        <div style="grid-column: 1 / -1; text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.9rem;">
-          No subjects added yet. Add a subject below to mark daily attendance.
+    const slots = [];
+    courses.forEach(course => {
+      (course.timetable || []).forEach(slot => {
+        if (slot.day === currentDayKey) {
+          slots.push({
+            course: course,
+            time: slot.time || 'General Slot'
+          });
+        }
+      });
+    });
+
+    // If no timetable slots configured for today, return all courses as daily roster
+    if (slots.length === 0) {
+      courses.forEach(course => {
+        slots.push({
+          course: course,
+          time: course.type === 'lab' ? 'Practical Session' : 'Theory Lecture'
+        });
+      });
+    }
+
+    return slots;
+  }
+
+  function renderDashboardSchedulePreview() {
+    const today = new Date().toISOString().split('T')[0];
+    const slots = getScheduledSlotsForDate(today);
+    dashboardSchedulePreview.innerHTML = '';
+
+    if (slots.length === 0) {
+      dashboardSchedulePreview.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);">
+          No lectures scheduled for today. Enjoy your day or add slots in the Timetable Setup tab!
         </div>
       `;
       return;
     }
 
-    subjects.forEach(subject => {
-      const stats = calculateSubjectStats(subject);
-      const existingLog = (subject.logs || []).find(l => l.date === selectedDate);
-
-      const isPresent = existingLog && existingLog.status === 'present';
-      const isAbsent = existingLog && existingLog.status === 'absent';
-
-      const card = document.createElement('div');
-      card.className = 'daily-item-card';
-
-      card.innerHTML = `
-        <div class="daily-subject-info">
-          <div class="daily-subject-name" title="${escapeHtml(subject.name)}" style="color: ${subject.color || 'var(--text-primary)'}">
-            ${subject.code ? `<span style="font-size:0.75rem; opacity:0.85;">[${escapeHtml(subject.code)}]</span> ` : ''}${escapeHtml(subject.name)}
-          </div>
-          <div class="daily-subject-stats">
-            Current: <strong>${stats.attended}/${stats.total}</strong> (${stats.formattedPercentage}%)
-          </div>
-        </div>
-
-        <div class="daily-checkbox-group">
-          <label class="attend-check-btn ${isPresent ? 'checked' : ''}" title="Mark Attended (Present)">
-            <input type="checkbox" data-subject-id="${subject.id}" data-action="toggle-present" ${isPresent ? 'checked' : ''}>
-            <span class="checkbox-indicator">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </span>
-            <span>Attended</span>
-          </label>
-
-          <button type="button" class="quick-absent-btn ${isAbsent ? 'active' : ''}" data-subject-id="${subject.id}" data-action="toggle-absent" title="Mark Missed (Absent)">
-            ${isAbsent ? '✕ Absent' : 'Absent'}
-          </button>
-        </div>
-      `;
-
-      dailyChecklistContainer.appendChild(card);
+    slots.forEach(item => {
+      const card = createScheduleSlotCard(item.course, item.time, today);
+      dashboardSchedulePreview.appendChild(card);
     });
   }
 
-  /**
-   * Renders the main subject cards grid.
-   */
+  function renderFullSchedule() {
+    const selectedDate = scheduleViewDate.value || new Date().toISOString().split('T')[0];
+    const slots = getScheduledSlotsForDate(selectedDate);
+    fullScheduleGrid.innerHTML = '';
+
+    if (slots.length === 0) {
+      fullScheduleGrid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);">
+          No classes found for this date.
+        </div>
+      `;
+      return;
+    }
+
+    slots.forEach(item => {
+      const card = createScheduleSlotCard(item.course, item.time, selectedDate);
+      fullScheduleGrid.appendChild(card);
+    });
+  }
+
+  function createScheduleSlotCard(course, timeStr, dateStr) {
+    const stats = calculateCourseStats(course);
+    const existingLog = (course.logs || []).find(l => l.date === dateStr);
+    const status = existingLog ? existingLog.status : null;
+
+    const card = document.createElement('div');
+    card.className = 'schedule-card';
+
+    card.innerHTML = `
+      <div class="schedule-card-top">
+        <span class="schedule-time-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          ${escapeHtml(timeStr)}
+        </span>
+        <span class="course-type-pill ${course.type || 'theory'}">${course.type === 'lab' ? 'Lab (2 Cr)' : 'Theory'}</span>
+      </div>
+
+      <div>
+        <div class="schedule-subject-name" style="color: ${course.color || 'var(--text-primary)'}">
+          ${course.code ? `[${escapeHtml(course.code)}] ` : ''}${escapeHtml(course.name)}
+        </div>
+        <div class="schedule-faculty-name">${escapeHtml(course.faculty || 'Faculty')} &bull; Status: ${stats.attended}/${stats.total} (${stats.formattedPercentage}%)</div>
+      </div>
+
+      <div class="schedule-actions-row">
+        <button class="status-btn present ${status === 'present' ? 'active' : ''}" data-action="status" data-status="present" data-id="${course.id}" data-date="${dateStr}">
+          ✓ Present
+        </button>
+        <button class="status-btn absent ${status === 'absent' ? 'active' : ''}" data-action="status" data-status="absent" data-id="${course.id}" data-date="${dateStr}">
+          ✕ Absent
+        </button>
+        <button class="status-btn od ${status === 'od' ? 'active' : ''}" data-action="status" data-status="od" data-id="${course.id}" data-date="${dateStr}" title="On Duty / Medical Leave">
+          ★ OD / Med
+        </button>
+        <button class="status-btn cancelled ${status === 'cancelled' ? 'active' : ''}" data-action="status" data-status="cancelled" data-id="${course.id}" data-date="${dateStr}" title="Class Cancelled (No Penalty)">
+          ⊘ Cancelled
+        </button>
+      </div>
+    `;
+
+    return card;
+  }
+
   function renderSubjectsGrid() {
-    const searchQuery = (subjectSearchInput.value || '').trim().toLowerCase();
+    const query = (subjectSearchInput.value || '').trim().toLowerCase();
     subjectsGrid.innerHTML = '';
 
-    const filteredSubjects = subjects.filter(sub => {
-      const nameMatch = sub.name.toLowerCase().includes(searchQuery);
-      const codeMatch = sub.code ? sub.code.toLowerCase().includes(searchQuery) : false;
-      return nameMatch || codeMatch;
+    const filtered = courses.filter(c => {
+      return c.name.toLowerCase().includes(query) || (c.code && c.code.toLowerCase().includes(query));
     });
 
-    if (filteredSubjects.length === 0) {
+    if (filtered.length === 0) {
       subjectsGrid.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-          </div>
-          <h3>${searchQuery ? 'No matching subjects found' : 'No subjects tracked yet'}</h3>
-          <p style="color: var(--text-secondary); max-width: 400px; font-size: 0.9rem;">
-            ${searchQuery ? 'Try searching with a different subject name or code.' : 'Add your subjects (like Math, Physics, CS) to track lectures, set attendance goals, and prevent low attendance.'}
-          </p>
-          <button id="emptyAddBtn" class="btn btn-primary" style="margin-top: 0.5rem;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span>Add Your First Subject</span>
-          </button>
+        <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 2px dashed var(--border-color);">
+          <h3>No courses found</h3>
+          <p style="color: var(--text-secondary); margin-top: 0.5rem;">Click "+ Add Course" to register courses in your semester.</p>
         </div>
       `;
-
-      const emptyAddBtn = document.getElementById('emptyAddBtn');
-      if (emptyAddBtn) {
-        emptyAddBtn.addEventListener('click', openAddSubjectModal);
-      }
       return;
     }
 
-    filteredSubjects.forEach(subject => {
-      const stats = calculateSubjectStats(subject);
+    filtered.forEach(course => {
+      const stats = calculateCourseStats(course);
       const progressWidth = Math.min(100, Math.max(0, stats.percentage));
-      const targetPercent = subject.targetPercentage || DEFAULT_TARGET;
+      const targetPercent = course.targetPercentage || DEFAULT_TARGET;
 
       const card = document.createElement('div');
       card.className = 'subject-card';
-      card.style.setProperty('--subject-accent', subject.color || 'var(--primary)');
+      card.style.setProperty('--subject-accent', course.color || 'var(--primary)');
 
       card.innerHTML = `
         <div class="subject-card-accent-bar"></div>
 
         <div class="subject-card-top">
           <div class="subject-meta">
-            ${subject.code ? `<span class="subject-code-badge">${escapeHtml(subject.code)}</span>` : ''}
-            <h4 class="subject-title" title="${escapeHtml(subject.name)}">${escapeHtml(subject.name)}</h4>
+            <div class="subject-badge-line">
+              ${course.code ? `<span style="font-size:0.7rem; font-weight:800; color:var(--subject-accent);">${escapeHtml(course.code)}</span>` : ''}
+              <span class="course-type-pill ${course.type || 'theory'}">${course.type === 'lab' ? 'Lab / Practical' : 'Theory'}</span>
+            </div>
+            <h4 class="subject-title">${escapeHtml(course.name)}</h4>
+            <span style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(course.faculty || 'Faculty')}</span>
           </div>
-          <div class="subject-menu">
-            <button class="card-action-btn" data-action="edit" data-id="${subject.id}" title="Edit Subject" aria-label="Edit Subject">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
+
+          <div style="display:flex; gap:0.25rem;">
+            <button class="card-action-btn" data-action="edit" data-id="${course.id}" title="Edit Course">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
             </button>
-            <button class="card-action-btn delete-btn" data-action="delete" data-id="${subject.id}" title="Delete Subject" aria-label="Delete Subject">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
+            <button class="card-action-btn delete-btn" data-action="delete" data-id="${course.id}" title="Delete Course">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
           </div>
         </div>
 
-        <!-- Formula display fraction & percent -->
         <div class="subject-formula-display">
           <div class="subject-fraction">
             <span class="subject-fraction-attended">${stats.attended}</span>
-            <span style="opacity: 0.6;">/</span>
-            <span class="subject-fraction-total">${stats.total}</span>
-            <span style="font-size: 0.75rem; color: var(--text-muted); margin-left: 0.25rem;">classes</span>
+            <span style="opacity:0.6;">/</span>
+            <span>${stats.total}</span>
+            <span style="font-size:0.75rem; color:var(--text-muted);">classes</span>
           </div>
           <div class="subject-percent-badge ${stats.status}">
             <span>${stats.formattedPercentage}%</span>
           </div>
         </div>
 
-        <!-- Progress Bar with Target Marker Line -->
-        <div class="progress-container">
-          <div class="progress-track">
-            <div class="progress-fill ${stats.status}" style="width: ${progressWidth}%;"></div>
-            <div class="target-indicator" style="left: ${targetPercent}%;" data-target-text="${targetPercent}%"></div>
-          </div>
+        <div class="progress-track">
+          <div class="progress-fill ${stats.status}" style="width: ${progressWidth}%;"></div>
+          <div class="target-indicator" style="left: ${targetPercent}%;" data-target-text="${targetPercent}%"></div>
         </div>
 
-        <!-- Status Advice / Bunk Forecast -->
         <div class="subject-advice ${stats.status}">
-          <span>${stats.status === 'safe' ? '✓' : stats.status === 'warning' ? '⚠️' : '✕'}</span>
+          <span>${stats.status === 'safe' ? '✓' : '⚠️'}</span>
           <span>${stats.forecast}</span>
         </div>
 
-        <!-- Quick 1-Tap Attendance Actions -->
         <div class="subject-card-actions">
-          <button class="btn-action-present" data-action="quick-present" data-id="${subject.id}" title="Attended lecture today (+1 Attended, +1 Total)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"></polyline>
-            </svg>
-            <span>+ Present</span>
-          </button>
-          
-          <button class="btn-action-absent" data-action="quick-absent" data-id="${subject.id}" title="Missed lecture today (+1 Total)">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-            <span>+ Absent</span>
-          </button>
-
-          <button class="btn-action-history" data-action="open-history" data-id="${subject.id}" title="View Date Logs & History">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-            <span>Logs</span>
-          </button>
+          <button class="status-btn present" data-action="quick-status" data-status="present" data-id="${course.id}">+ Present</button>
+          <button class="status-btn absent" data-action="quick-status" data-status="absent" data-id="${course.id}">+ Absent</button>
+          <button class="status-btn od" data-action="quick-status" data-status="od" data-id="${course.id}">+ OD</button>
+          <button class="status-btn" data-action="open-history" data-id="${course.id}" style="background:var(--bg-input);">Logs</button>
         </div>
       `;
 
@@ -580,65 +727,151 @@
     });
   }
 
-  // --- Attendance Logging Operations ---
+  // --- What-If Bunk Simulator Engine ---
+  function populateSimulatorSelect() {
+    simSubjectSelect.innerHTML = '';
+    courses.forEach(course => {
+      const opt = document.createElement('option');
+      opt.value = course.id;
+      opt.textContent = `${course.name} (${course.code || 'Course'})`;
+      simSubjectSelect.appendChild(opt);
+    });
+  }
 
-  /**
-   * Records or toggles attendance for a subject on a specified date.
-   */
-  function recordAttendanceForDate(subjectId, dateStr, status) {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject) return;
+  function updateSimulatorResults() {
+    const subjectId = simSubjectSelect.value;
+    const course = courses.find(c => c.id === subjectId);
+    if (!course) return;
 
-    if (!subject.logs) subject.logs = [];
+    const stats = calculateCourseStats(course);
+    const bunksToSimulate = parseInt(simBunkSlider.value) || 0;
+    const attendToSimulate = parseInt(simAttendSlider.value) || 0;
 
-    const existingIndex = subject.logs.findIndex(l => l.date === dateStr);
+    simBunkVal.textContent = `${bunksToSimulate} class${bunksToSimulate !== 1 ? 'es' : ''}`;
+    simAttendVal.textContent = `${attendToSimulate} class${attendToSimulate !== 1 ? 'es' : ''}`;
+
+    const simAttended = stats.attended + attendToSimulate;
+    const simTotal = stats.total + bunksToSimulate + attendToSimulate;
+    const simPercent = simTotal > 0 ? (simAttended / simTotal) * 100 : 0;
+    const formattedSim = simTotal > 0 ? simPercent.toFixed(1) : '0.0';
+
+    simPercentDisplay.textContent = `${formattedSim}%`;
+
+    const target = course.targetPercentage || DEFAULT_TARGET;
+    if (simPercent >= target) {
+      simPercentDisplay.style.color = 'var(--success)';
+      simStatusPill.className = 'sim-status-pill';
+      simStatusPill.style.background = 'var(--success-bg)';
+      simStatusPill.style.color = 'var(--success)';
+      simStatusPill.textContent = 'Exam Eligible (Safe)';
+      simExplanationText.textContent = `If you miss ${bunksToSimulate} and attend ${attendToSimulate} classes, your attendance remains at ${formattedSim}%, above ${target}%.`;
+    } else if (simPercent >= 65) {
+      simPercentDisplay.style.color = 'var(--warning)';
+      simStatusPill.className = 'sim-status-pill';
+      simStatusPill.style.background = 'var(--warning-bg)';
+      simStatusPill.style.color = 'var(--warning)';
+      simStatusPill.textContent = 'Condonation Zone (Fine Required)';
+      simExplanationText.textContent = `Warning: Missing ${bunksToSimulate} classes drops you to ${formattedSim}%. You would need special dean approval or medical cert.`;
+    } else {
+      simPercentDisplay.style.color = 'var(--danger)';
+      simStatusPill.className = 'sim-status-pill';
+      simStatusPill.style.background = 'var(--danger-bg)';
+      simStatusPill.style.color = 'var(--danger)';
+      simStatusPill.textContent = 'Debarred from Exam!';
+      simExplanationText.textContent = `Critical: Attendance drops to ${formattedSim}%. You will be debarred from semester exams!`;
+    }
+  }
+
+  // --- Weekly Timetable Builder ---
+  function renderTimetableBuilder() {
+    timetableSetupGrid.innerHTML = '';
+
+    DAYS.forEach(day => {
+      const col = document.createElement('div');
+      col.className = 'day-column';
+
+      col.innerHTML = `
+        <div class="day-column-header">
+          <span>${day.label}</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">${day.key.toUpperCase()}</span>
+        </div>
+        <div class="day-slots-list" id="day-list-${day.key}"></div>
+      `;
+
+      timetableSetupGrid.appendChild(col);
+      const listContainer = col.querySelector('.day-slots-list');
+
+      let hasSlots = false;
+      courses.forEach(course => {
+        (course.timetable || []).forEach((slot, slotIndex) => {
+          if (slot.day === day.key) {
+            hasSlots = true;
+            const slotItem = document.createElement('div');
+            slotItem.className = 'slot-item';
+            slotItem.innerHTML = `
+              <div style="font-weight:700; color:${course.color || 'var(--text-primary)'}; padding-right: 18px;">
+                ${escapeHtml(course.name)}
+              </div>
+              <div style="font-size:0.72rem; color:var(--text-secondary);">${escapeHtml(slot.time)}</div>
+              <button class="slot-delete-btn" data-action="delete-slot" data-course-id="${course.id}" data-slot-index="${slotIndex}" title="Remove Slot">&times;</button>
+            `;
+            listContainer.appendChild(slotItem);
+          }
+        });
+      });
+
+      if (!hasSlots) {
+        listContainer.innerHTML = `<div style="font-size:0.75rem; color:var(--text-muted); text-align:center; padding:1rem;">No classes</div>`;
+      }
+    });
+  }
+
+  // --- Attendance Record Action ---
+  function recordAttendance(courseId, dateStr, status) {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+
+    if (!course.logs) course.logs = [];
+
+    const existingIndex = course.logs.findIndex(l => l.date === dateStr);
 
     if (existingIndex >= 0) {
-      if (subject.logs[existingIndex].status === status) {
-        // If same status clicked again, remove it (toggle off)
-        subject.logs.splice(existingIndex, 1);
-        showToast(`Removed log for ${subject.name} on ${formatDate(dateStr)}`, 'info');
+      if (course.logs[existingIndex].status === status) {
+        course.logs.splice(existingIndex, 1);
+        showToast(`Cleared record for ${course.name} on ${formatDate(dateStr)}`, 'info');
       } else {
-        // Change status
-        subject.logs[existingIndex].status = status;
-        subject.logs[existingIndex].timestamp = Date.now();
-        showToast(`Updated to ${status.toUpperCase()} for ${subject.name}`, 'success');
+        course.logs[existingIndex].status = status;
+        course.logs[existingIndex].timestamp = Date.now();
+        showToast(`Marked ${status.toUpperCase()} for ${course.name}`, 'success');
       }
     } else {
-      // Add new log entry
-      subject.logs.unshift({
+      course.logs.unshift({
         id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         date: dateStr,
         status: status,
         timestamp: Date.now()
       });
-      showToast(`Marked ${status.toUpperCase()} for ${subject.name} on ${formatDate(dateStr)}`, 'success');
+      showToast(`Marked ${status.toUpperCase()} for ${course.name} on ${formatDate(dateStr)}`, 'success');
     }
 
-    saveSubjects();
+    saveCourses();
     renderAll();
-    if (activeHistorySubjectId === subjectId) {
-      renderHistoryModal(subjectId);
+    if (activeHistoryCourseId === courseId) {
+      renderHistoryModal(courseId);
     }
   }
 
-  /**
-   * Mark all subjects present for the selected date.
-   */
-  function markAllPresentForSelectedDate() {
-    const selectedDate = dailyAttendanceDate.value || new Date().toISOString().split('T')[0];
-    if (subjects.length === 0) {
-      showToast('No subjects to mark.', 'warning');
-      return;
-    }
-
-    subjects.forEach(subject => {
-      if (!subject.logs) subject.logs = [];
-      const existingIndex = subject.logs.findIndex(l => l.date === selectedDate);
-      if (existingIndex >= 0) {
-        subject.logs[existingIndex].status = 'present';
-      } else {
-        subject.logs.unshift({
+  function markAllSchedulePresent() {
+    const selectedDate = scheduleViewDate.value || new Date().toISOString().split('T')[0];
+    const slots = getScheduledSlotsForDate(selectedDate);
+    
+    slots.forEach(slot => {
+      const course = slot.course;
+      if (!course.logs) course.logs = [];
+      const existing = course.logs.find(l => l.date === selectedDate);
+      if (existing) existing.status = 'present';
+      else {
+        course.logs.unshift({
           id: 'log_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
           date: selectedDate,
           status: 'present',
@@ -647,158 +880,190 @@
       }
     });
 
-    saveSubjects();
+    saveCourses();
     renderAll();
-    showToast(`Marked all present for ${formatDate(selectedDate)}!`, 'success');
+    showToast(`Marked all scheduled classes present for ${formatDate(selectedDate)}!`, 'success');
   }
 
   // --- Modals Logic ---
-
-  function openAddSubjectModal() {
-    subjectModalTitle.textContent = 'Add New Subject';
+  function openAddCourseModal() {
+    subjectModalTitle.textContent = 'Add Course / Practical';
     editSubjectId.value = '';
     subjectForm.reset();
     subjectTargetInput.value = '75';
-    initialCountsRow.style.display = 'grid';
-    selectedSubjectColor = '#6366f1';
-    updateColorPickerSelection('#6366f1');
+    selectedColor = '#6366f1';
+    updateColorSelection('#6366f1');
     subjectModalOverlay.classList.add('active');
     subjectNameInput.focus();
   }
 
-  function openEditSubjectModal(subjectId) {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject) return;
+  function openEditCourseModal(courseId) {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
 
-    subjectModalTitle.textContent = 'Edit Subject';
-    editSubjectId.value = subject.id;
-    subjectNameInput.value = subject.name;
-    subjectCodeInput.value = subject.code || '';
-    subjectTargetInput.value = subject.targetPercentage || 75;
-    
-    // In edit mode, allow adjusting base counts
-    initialCountsRow.style.display = 'grid';
-    initialAttendedInput.value = subject.baseAttended || 0;
-    initialTotalInput.value = subject.baseTotal || 0;
-    
-    selectedSubjectColor = subject.color || '#6366f1';
-    updateColorPickerSelection(selectedSubjectColor);
+    subjectModalTitle.textContent = 'Edit Course';
+    editSubjectId.value = course.id;
+    subjectNameInput.value = course.name;
+    subjectCodeInput.value = course.code || '';
+    subjectTypeInput.value = course.type || 'theory';
+    subjectFacultyInput.value = course.faculty || '';
+    subjectTargetInput.value = course.targetPercentage || 75;
+    initialAttendedInput.value = course.baseAttended || 0;
+    initialTotalInput.value = course.baseTotal || 0;
 
+    selectedColor = course.color || '#6366f1';
+    updateColorSelection(selectedColor);
     subjectModalOverlay.classList.add('active');
   }
 
-  function closeSubjectModal() {
+  function closeCourseModal() {
     subjectModalOverlay.classList.remove('active');
     subjectForm.reset();
   }
 
-  function updateColorPickerSelection(colorHex) {
-    const options = colorPickerGroup.querySelectorAll('.color-option');
-    options.forEach(opt => {
-      if (opt.getAttribute('data-color') === colorHex) {
-        opt.classList.add('selected');
-      } else {
-        opt.classList.remove('selected');
-      }
+  function updateColorSelection(hex) {
+    colorPickerGroup.querySelectorAll('.color-option').forEach(opt => {
+      if (opt.getAttribute('data-color') === hex) opt.classList.add('selected');
+      else opt.classList.remove('selected');
     });
   }
 
-  function handleSubjectFormSubmit(e) {
+  function handleCourseFormSubmit(e) {
     e.preventDefault();
     const name = subjectNameInput.value.trim();
     const code = subjectCodeInput.value.trim();
+    const type = subjectTypeInput.value;
+    const faculty = subjectFacultyInput.value.trim();
     const target = Math.max(1, Math.min(100, parseInt(subjectTargetInput.value) || 75));
     const baseAttended = Math.max(0, parseInt(initialAttendedInput.value) || 0);
     const baseTotal = Math.max(baseAttended, parseInt(initialTotalInput.value) || 0);
     const id = editSubjectId.value;
 
-    if (!name) {
-      showToast('Please enter a subject name', 'danger');
-      return;
-    }
+    if (!name) return;
 
     if (id) {
-      // Edit existing
-      const index = subjects.findIndex(s => s.id === id);
-      if (index >= 0) {
-        subjects[index].name = name;
-        subjects[index].code = code;
-        subjects[index].targetPercentage = target;
-        subjects[index].baseAttended = baseAttended;
-        subjects[index].baseTotal = baseTotal;
-        subjects[index].color = selectedSubjectColor;
+      const idx = courses.findIndex(c => c.id === id);
+      if (idx >= 0) {
+        courses[idx].name = name;
+        courses[idx].code = code;
+        courses[idx].type = type;
+        courses[idx].faculty = faculty;
+        courses[idx].targetPercentage = target;
+        courses[idx].baseAttended = baseAttended;
+        courses[idx].baseTotal = baseTotal;
+        courses[idx].color = selectedColor;
         showToast(`Updated "${name}"`, 'success');
       }
     } else {
-      // Add new
-      const newSubject = {
+      courses.push({
         id: 'sub_' + Date.now(),
         name,
         code,
+        type,
+        faculty,
         targetPercentage: target,
-        color: selectedSubjectColor,
+        color: selectedColor,
         baseAttended,
         baseTotal,
+        timetable: [],
         logs: [],
         createdAt: Date.now()
-      };
-      subjects.push(newSubject);
+      });
       showToast(`Added "${name}"`, 'success');
     }
 
-    saveSubjects();
-    closeSubjectModal();
+    saveCourses();
+    closeCourseModal();
     renderAll();
   }
 
-  function deleteSubject(subjectId) {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject) return;
+  function deleteCourse(courseId) {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
 
-    if (confirm(`Are you sure you want to delete "${subject.name}" and all its lecture records?`)) {
-      subjects = subjects.filter(s => s.id !== subjectId);
-      saveSubjects();
+    if (confirm(`Delete course "${course.name}" and all records?`)) {
+      courses = courses.filter(c => c.id !== courseId);
+      saveCourses();
       renderAll();
-      showToast(`Deleted "${subject.name}"`, 'info');
+      showToast(`Deleted "${course.name}"`, 'info');
     }
   }
 
-  // --- History & Date Log Modal Logic ---
+  // --- Slot Modal Logic ---
+  function openAddSlotModal() {
+    slotSubjectSelect.innerHTML = '';
+    courses.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.code || 'Course'})`;
+      slotSubjectSelect.appendChild(opt);
+    });
+    slotModalOverlay.classList.add('active');
+  }
 
-  function openHistoryModal(subjectId) {
-    activeHistorySubjectId = subjectId;
-    renderHistoryModal(subjectId);
+  function closeSlotModal() {
+    slotModalOverlay.classList.remove('active');
+  }
+
+  function handleSlotFormSubmit(e) {
+    e.preventDefault();
+    const courseId = slotSubjectSelect.value;
+    const day = slotDaySelect.value;
+    const time = slotTimeInput.value.trim();
+
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
+
+    if (!course.timetable) course.timetable = [];
+    course.timetable.push({ day, time });
+
+    saveCourses();
+    closeSlotModal();
+    renderAll();
+    showToast(`Added timetable slot for ${course.name}`, 'success');
+  }
+
+  function deleteSlot(courseId, slotIndex) {
+    const course = courses.find(c => c.id === courseId);
+    if (!course || !course.timetable) return;
+
+    course.timetable.splice(slotIndex, 1);
+    saveCourses();
+    renderAll();
+    showToast('Removed timetable slot', 'info');
+  }
+
+  // --- History Modal Logic ---
+  function openHistoryModal(courseId) {
+    activeHistoryCourseId = courseId;
+    renderHistoryModal(courseId);
     historyModalOverlay.classList.add('active');
   }
 
   function closeHistoryModal() {
     historyModalOverlay.classList.remove('active');
-    activeHistorySubjectId = null;
+    activeHistoryCourseId = null;
   }
 
-  function renderHistoryModal(subjectId) {
-    const subject = subjects.find(s => s.id === subjectId);
-    if (!subject) return;
+  function renderHistoryModal(courseId) {
+    const course = courses.find(c => c.id === courseId);
+    if (!course) return;
 
-    const stats = calculateSubjectStats(subject);
-    historySubjectId.value = subject.id;
-    historyModalSubjectTitle.textContent = subject.name;
-    historyModalSubjectCode.textContent = subject.code ? `Code: ${subject.code}` : '';
+    const stats = calculateCourseStats(course);
+    historySubjectId.value = course.id;
+    historyModalSubjectTitle.textContent = course.name;
+    historyModalSubjectCode.textContent = `${course.code || ''} &bull; ${course.faculty || 'Faculty'}`;
     historyFormulaDisplay.textContent = `${stats.attended} / ${stats.total} = ${stats.formattedPercentage}%`;
 
     historyTargetStatusBadge.className = `subject-percent-badge ${stats.status}`;
-    historyTargetStatusBadge.textContent = `${stats.formattedPercentage}% (Target: ${stats.target}%)`;
+    historyTargetStatusBadge.textContent = `${stats.formattedPercentage}% (${stats.examStatus})`;
 
-    const logs = [...(subject.logs || [])].sort((a, b) => b.date.localeCompare(a.date));
+    const logs = [...(course.logs || [])].sort((a, b) => b.date.localeCompare(a.date));
     historyLogCount.textContent = logs.length;
     historyEntriesList.innerHTML = '';
 
     if (logs.length === 0) {
-      historyEntriesList.innerHTML = `
-        <div style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
-          No date logs recorded yet for this subject. Use the form above to add a lecture date!
-        </div>
-      `;
+      historyEntriesList.innerHTML = `<div style="text-align:center; padding:1.5rem; color:var(--text-muted); font-size:0.85rem;">No lecture dates recorded yet.</div>`;
       return;
     }
 
@@ -806,20 +1071,19 @@
       const item = document.createElement('div');
       item.className = 'history-entry-item';
 
+      let statusLabel = log.status.toUpperCase();
+      if (log.status === 'od') statusLabel = 'ON DUTY';
+      if (log.status === 'cancelled') statusLabel = 'CANCELLED';
+
       item.innerHTML = `
-        <div class="entry-date-wrap">
-          <span class="entry-badge ${log.status}">${log.status}</span>
-          <span style="font-weight: 700;">${formatDate(log.date)}</span>
-          <span style="font-size: 0.75rem; color: var(--text-muted);">${log.date}</span>
+        <div style="display:flex; align-items:center; gap:0.65rem;">
+          <span class="entry-badge ${log.status}">${statusLabel}</span>
+          <span style="font-weight:700;">${formatDate(log.date)}</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">${log.date}</span>
         </div>
-        <div>
-          <button class="entry-delete-btn" data-action="delete-log" data-log-id="${log.id}" title="Delete this date entry" aria-label="Delete log">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3 6 5 6 21 6"></polyline>
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
+        <button class="entry-delete-btn" data-action="delete-log" data-log-id="${log.id}" title="Delete Record">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+        </button>
       `;
 
       historyEntriesList.appendChild(item);
@@ -828,58 +1092,52 @@
 
   function handleAddHistoryEntry(e) {
     e.preventDefault();
-    const subjectId = historySubjectId.value;
+    const courseId = historySubjectId.value;
     const dateStr = historyEntryDate.value;
     const status = historyEntryStatus.value;
-
-    if (!subjectId || !dateStr) return;
-
-    recordAttendanceForDate(subjectId, dateStr, status);
+    if (!courseId || !dateStr) return;
+    recordAttendance(courseId, dateStr, status);
   }
 
   function deleteHistoryLogEntry(logId) {
-    const subject = subjects.find(s => s.id === activeHistorySubjectId);
-    if (!subject || !subject.logs) return;
-
-    subject.logs = subject.logs.filter(l => l.id !== logId);
-    saveSubjects();
+    const course = courses.find(c => c.id === activeHistoryCourseId);
+    if (!course || !course.logs) return;
+    course.logs = course.logs.filter(l => l.id !== logId);
+    saveCourses();
     renderAll();
-    renderHistoryModal(subject.id);
+    renderHistoryModal(course.id);
     showToast('Deleted log entry', 'info');
   }
 
-  function clearAllLogsForSubject() {
-    const subject = subjects.find(s => s.id === activeHistorySubjectId);
-    if (!subject) return;
-
-    if (confirm(`Clear all lecture date logs for "${subject.name}"? (Base counts will be preserved)`)) {
-      subject.logs = [];
-      saveSubjects();
+  function clearAllLogs() {
+    const course = courses.find(c => c.id === activeHistoryCourseId);
+    if (!course) return;
+    if (confirm(`Clear all lecture records for "${course.name}"?`)) {
+      course.logs = [];
+      saveCourses();
       renderAll();
-      renderHistoryModal(subject.id);
-      showToast('Cleared all date logs for ' + subject.name, 'info');
+      renderHistoryModal(course.id);
+      showToast('Cleared logs', 'info');
     }
   }
 
-  // --- Export & Import Backup ---
-
+  // --- Export / Import ---
   function exportBackupData() {
     const exportPayload = {
-      app: 'AttendFlow',
-      version: '1.0',
+      app: 'AttendFlow-University',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
-      subjects: subjects
+      courses: courses
     };
 
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportPayload, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute('href', dataStr);
-    downloadAnchor.setAttribute('download', `attendflow_backup_${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
-
-    showToast('Backup JSON downloaded successfully!', 'success');
+    const a = document.createElement('a');
+    a.setAttribute('href', dataStr);
+    a.setAttribute('download', `attendflow_uni_backup_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    showToast('University backup JSON exported!', 'success');
   }
 
   function handleImportFile(e) {
@@ -890,155 +1148,154 @@
     reader.onload = function (event) {
       try {
         const imported = JSON.parse(event.target.result);
-        if (imported && Array.isArray(imported.subjects)) {
-          subjects = imported.subjects;
-          saveSubjects();
+        const dataList = imported.courses || imported.subjects || (Array.isArray(imported) ? imported : null);
+        if (dataList) {
+          courses = dataList.map(c => ({
+            ...c,
+            type: c.type || 'theory',
+            faculty: c.faculty || 'Professor',
+            timetable: c.timetable || []
+          }));
+          saveCourses();
           renderAll();
-          showToast(`Successfully restored ${subjects.length} subjects!`, 'success');
-        } else if (Array.isArray(imported)) {
-          subjects = imported;
-          saveSubjects();
-          renderAll();
-          showToast(`Successfully restored ${subjects.length} subjects!`, 'success');
-        } else {
-          showToast('Invalid backup file format.', 'danger');
+          showToast(`Restored ${courses.length} courses!`, 'success');
         }
       } catch (err) {
-        console.error('Error parsing import JSON:', err);
-        showToast('Failed to import JSON file.', 'danger');
+        showToast('Failed to import JSON backup.', 'danger');
       }
       importFileInput.value = '';
     };
     reader.readAsText(file);
   }
 
-  // --- Event Listeners Attachment ---
-
+  // --- Event Listeners ---
   function attachEventListeners() {
-    // Theme toggle
     themeToggleBtn.addEventListener('click', toggleTheme);
 
-    // Add subject modals
-    addSubjectBtn.addEventListener('click', openAddSubjectModal);
-    addSubjectNavBtn.addEventListener('click', openAddSubjectModal);
-    closeSubjectModalBtn.addEventListener('click', closeSubjectModal);
-    cancelSubjectModalBtn.addEventListener('click', closeSubjectModal);
-    subjectForm.addEventListener('submit', handleSubjectFormSubmit);
+    // Tab buttons
+    tabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        switchTab(tab);
+      });
+    });
+
+    // Modals
+    addSubjectBtn.addEventListener('click', openAddCourseModal);
+    addSubjectNavBtn.addEventListener('click', openAddCourseModal);
+    closeSubjectModalBtn.addEventListener('click', closeCourseModal);
+    cancelSubjectModalBtn.addEventListener('click', closeCourseModal);
+    subjectForm.addEventListener('submit', handleCourseFormSubmit);
+
+    openAddSlotModalBtn.addEventListener('click', openAddSlotModal);
+    closeSlotModalBtn.addEventListener('click', closeSlotModal);
+    cancelSlotModalBtn.addEventListener('click', closeSlotModal);
+    slotForm.addEventListener('submit', handleSlotFormSubmit);
 
     // Color picker
-    colorPickerGroup.addEventListener('click', (e) => {
-      const target = e.target.closest('.color-option');
-      if (!target) return;
-      selectedSubjectColor = target.getAttribute('data-color');
-      updateColorPickerSelection(selectedSubjectColor);
+    colorPickerGroup.addEventListener('click', e => {
+      const opt = e.target.closest('.color-option');
+      if (!opt) return;
+      selectedColor = opt.getAttribute('data-color');
+      updateColorSelection(selectedColor);
     });
 
-    // Subject search
+    // Schedule actions
+    scheduleViewDate.addEventListener('change', renderFullSchedule);
+    markScheduleAllPresentBtn.addEventListener('click', markAllSchedulePresent);
+
+    // Search
     subjectSearchInput.addEventListener('input', renderSubjectsGrid);
 
-    // Daily checklist date change
-    dailyAttendanceDate.addEventListener('change', renderDailyChecklist);
-    markAllPresentBtn.addEventListener('click', markAllPresentForSelectedDate);
+    // Simulator
+    simSubjectSelect.addEventListener('change', updateSimulatorResults);
+    simBunkSlider.addEventListener('input', updateSimulatorResults);
+    simAttendSlider.addEventListener('input', updateSimulatorResults);
+    resetSimBtn.addEventListener('click', () => {
+      simBunkSlider.value = 0;
+      simAttendSlider.value = 0;
+      updateSimulatorResults();
+    });
 
-    // Daily checklist interactions (delegation)
-    dailyChecklistContainer.addEventListener('click', (e) => {
-      const togglePresentLabel = e.target.closest('label.attend-check-btn');
-      const absentBtn = e.target.closest('button[data-action="toggle-absent"]');
+    // Delegate status buttons on schedule
+    document.addEventListener('click', e => {
+      const statusBtn = e.target.closest('button[data-action="status"]');
+      const quickStatusBtn = e.target.closest('button[data-action="quick-status"]');
+      const openHistoryBtn = e.target.closest('button[data-action="open-history"]');
+      const editBtn = e.target.closest('button[data-action="edit"]');
+      const deleteBtn = e.target.closest('button[data-action="delete"]');
+      const deleteSlotBtn = e.target.closest('button[data-action="delete-slot"]');
 
-      const selectedDate = dailyAttendanceDate.value || new Date().toISOString().split('T')[0];
-
-      if (togglePresentLabel) {
-        const checkbox = togglePresentLabel.querySelector('input[type="checkbox"]');
-        const subjectId = checkbox.getAttribute('data-subject-id');
-        recordAttendanceForDate(subjectId, selectedDate, 'present');
-      } else if (absentBtn) {
-        const subjectId = absentBtn.getAttribute('data-subject-id');
-        recordAttendanceForDate(subjectId, selectedDate, 'absent');
+      if (statusBtn) {
+        const courseId = statusBtn.getAttribute('data-id');
+        const status = statusBtn.getAttribute('data-status');
+        const dateStr = statusBtn.getAttribute('data-date');
+        recordAttendance(courseId, dateStr, status);
+      } else if (quickStatusBtn) {
+        const courseId = quickStatusBtn.getAttribute('data-id');
+        const status = quickStatusBtn.getAttribute('data-status');
+        const today = new Date().toISOString().split('T')[0];
+        recordAttendance(courseId, today, status);
+      } else if (openHistoryBtn) {
+        const courseId = openHistoryBtn.getAttribute('data-id');
+        openHistoryModal(courseId);
+      } else if (editBtn) {
+        const courseId = editBtn.getAttribute('data-id');
+        openEditCourseModal(courseId);
+      } else if (deleteBtn) {
+        const courseId = deleteBtn.getAttribute('data-id');
+        deleteCourse(courseId);
+      } else if (deleteSlotBtn) {
+        const courseId = deleteSlotBtn.getAttribute('data-course-id');
+        const slotIdx = parseInt(deleteSlotBtn.getAttribute('data-slot-index'));
+        deleteSlot(courseId, slotIdx);
       }
     });
 
-    // Subjects Grid Card Interactions (delegation)
-    subjectsGrid.addEventListener('click', (e) => {
-      const target = e.target.closest('[data-action]');
-      if (!target) return;
-
-      const action = target.getAttribute('data-action');
-      const subjectId = target.getAttribute('data-id');
-      const today = new Date().toISOString().split('T')[0];
-
-      if (action === 'quick-present') {
-        recordAttendanceForDate(subjectId, today, 'present');
-      } else if (action === 'quick-absent') {
-        recordAttendanceForDate(subjectId, today, 'absent');
-      } else if (action === 'open-history') {
-        openHistoryModal(subjectId);
-      } else if (action === 'edit') {
-        openEditSubjectModal(subjectId);
-      } else if (action === 'delete') {
-        deleteSubject(subjectId);
-      }
-    });
-
-    // History Modal Interactions
+    // History Modal events
     closeHistoryModalBtn.addEventListener('click', closeHistoryModal);
     closeHistoryBottomBtn.addEventListener('click', closeHistoryModal);
     addHistoryEntryForm.addEventListener('submit', handleAddHistoryEntry);
-    clearAllLogsBtn.addEventListener('click', clearAllLogsForSubject);
+    clearAllLogsBtn.addEventListener('click', clearAllLogs);
 
-    historyEntriesList.addEventListener('click', (e) => {
-      const deleteBtn = e.target.closest('[data-action="delete-log"]');
-      if (deleteBtn) {
-        const logId = deleteBtn.getAttribute('data-log-id');
+    historyEntriesList.addEventListener('click', e => {
+      const delBtn = e.target.closest('button[data-action="delete-log"]');
+      if (delBtn) {
+        const logId = delBtn.getAttribute('data-log-id');
         deleteHistoryLogEntry(logId);
       }
     });
 
-    // Overlay backdrop clicks
-    subjectModalOverlay.addEventListener('click', (e) => {
-      if (e.target === subjectModalOverlay) closeSubjectModal();
-    });
-    historyModalOverlay.addEventListener('click', (e) => {
-      if (e.target === historyModalOverlay) closeHistoryModal();
-    });
+    // Backdrop clicks
+    subjectModalOverlay.addEventListener('click', e => { if (e.target === subjectModalOverlay) closeCourseModal(); });
+    slotModalOverlay.addEventListener('click', e => { if (e.target === slotModalOverlay) closeSlotModal(); });
+    historyModalOverlay.addEventListener('click', e => { if (e.target === historyModalOverlay) closeHistoryModal(); });
 
-    // Export & Import
+    // Export / Import
     exportDataBtn.addEventListener('click', exportBackupData);
     importDataBtn.addEventListener('click', () => importFileInput.click());
     importFileInput.addEventListener('change', handleImportFile);
 
-    // Keyboard Escape to close modals
-    document.addEventListener('keydown', (e) => {
+    // Escape Key
+    document.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
-        closeSubjectModal();
+        closeCourseModal();
+        closeSlotModal();
         closeHistoryModal();
       }
     });
   }
 
-  // --- Helper Utilities ---
-
+  // --- Utilities ---
   function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    
-    let iconSvg = '';
-    if (type === 'success') {
-      iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--success);"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-    } else if (type === 'danger') {
-      iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--danger);"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>';
-    } else {
-      iconSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--primary);"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
-    }
-
-    toast.innerHTML = `${iconSvg}<span>${escapeHtml(message)}</span>`;
+    toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
     toastContainer.appendChild(toast);
-
     setTimeout(() => {
-      toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
       toast.style.opacity = '0';
-      toast.style.transform = 'translateY(10px)';
       setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, 2800);
   }
 
   function formatDate(dateStr) {
@@ -1063,7 +1320,7 @@
       .replace(/'/g, '&#039;');
   }
 
-  // --- Start App on DOM Ready ---
+  // --- Start ---
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
