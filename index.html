@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="University Attendance Management System - Track lectures, practicals, weekly timetables, and upload your schedule automatically.">
+  <meta name="description" content="University Attendance Management System - Track lectures, practicals, weekly timetables, and upload schedules via CSV, PDF, or Photos.">
   <title>AttendFlow - University Attendance Portal</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,7 +46,7 @@
           </svg>
         </button>
 
-        <button id="openUploadTimetableNavBtn" class="btn btn-accent" title="Upload Timetable File">
+        <button id="openUploadTimetableNavBtn" class="btn btn-accent" title="Upload Timetable (CSV, PDF, or Photo)">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="17 8 12 3 7 8"></polyline>
@@ -210,8 +210,8 @@
               <p style="font-size: 0.8rem; color: var(--text-secondary);" id="dashboardTodayDateStr">Today's routine</p>
             </div>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-secondary" onclick="openUploadTimetableModal()">📤 Upload Timetable</button>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-secondary" onclick="openUploadTimetableModal()">📤 Upload Timetable (Photo/PDF/CSV)</button>
             <button class="btn btn-primary" onclick="switchTab('schedule')">View Full Schedule &rarr;</button>
           </div>
         </div>
@@ -363,7 +363,7 @@
                 <polyline points="17 8 12 3 7 8"></polyline>
                 <line x1="12" y1="3" x2="12" y2="15"></line>
               </svg>
-              <span>Upload Timetable</span>
+              <span>Upload Timetable (Photo / PDF / CSV)</span>
             </button>
             <button id="openAddSlotModalBtn" class="btn btn-primary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -381,14 +381,14 @@
   </div>
 
   <!-- ==========================================================
-       MODAL: Upload & Auto-Parse Weekly Timetable
+       MODAL: Upload & Auto-Parse Weekly Timetable (CSV, PDF, Photos)
        ========================================================== -->
   <div class="modal-overlay" id="uploadTimetableModalOverlay">
     <div class="modal-dialog upload-modal-dialog">
       <div class="modal-header">
         <div>
           <h3 class="modal-title">Upload Weekly Timetable</h3>
-          <p style="font-size: 0.75rem; color: var(--text-secondary);">Upload CSV, JSON, or paste text to automatically build your schedule and courses</p>
+          <p style="font-size: 0.75rem; color: var(--text-secondary);">Upload CSV, PDF Document, or Photo/Screenshot of your timetable for instant parsing</p>
         </div>
         <button class="modal-close-btn" id="closeUploadModalBtn" aria-label="Close">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -399,22 +399,22 @@
         
         <!-- Input Method Tabs -->
         <div class="upload-modal-tabs">
-          <button class="upload-tab-btn active" id="tabUploadFileBtn" data-target="uploadFileSection">Upload File (.csv / .json / .txt)</button>
+          <button class="upload-tab-btn active" id="tabUploadFileBtn" data-target="uploadFileSection">Upload File (Photo / PDF / CSV)</button>
           <button class="upload-tab-btn" id="tabPasteTextBtn" data-target="uploadPasteSection">Paste Text Schedule</button>
         </div>
 
-        <!-- Section 1: File Upload Dropzone -->
+        <!-- Section 1: File Upload Dropzone (Supports CSV, PDF, PNG, JPG) -->
         <div id="uploadFileSection">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-            <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Select or Drop your Timetable file</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.4rem;">
+            <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Drop or Select Timetable File</span>
             <button type="button" class="template-download-pill" id="downloadSampleTemplateBtn" title="Download standard CSV format template">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-              <span>Download Sample CSV Template</span>
+              <span>Download Sample CSV</span>
             </button>
           </div>
 
           <div class="upload-dropzone" id="timetableDropzone">
-            <input type="file" id="timetableFileInput" accept=".csv,.json,.txt" style="display: none;">
+            <input type="file" id="timetableFileInput" accept=".csv,.json,.txt,.pdf,.png,.jpg,.jpeg,.webp" style="display: none;">
             <div class="dropzone-icon">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -425,10 +425,26 @@
               </svg>
             </div>
             <div>
-              <p style="font-weight: 800; font-size: 0.95rem;">Drag & drop your timetable file here</p>
-              <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">Supports .CSV (Excel/Sheets), .JSON, or .TXT</p>
+              <p style="font-weight: 800; font-size: 0.95rem;">Drag & drop your Timetable file or photo</p>
+              <div class="supported-formats-row" style="margin-top: 0.35rem;">
+                <span class="format-badge csv">📊 CSV / Excel</span>
+                <span class="format-badge pdf">📄 PDF Document</span>
+                <span class="format-badge ocr">📷 Photo / Screenshot (OCR)</span>
+              </div>
             </div>
-            <button type="button" class="btn btn-secondary" id="browseFileBtn" style="font-size: 0.8rem; padding: 0.4rem 0.9rem;">Browse File</button>
+            <button type="button" class="btn btn-secondary" id="browseFileBtn" style="font-size: 0.8rem; padding: 0.4rem 0.9rem;">Browse File / Photo</button>
+          </div>
+
+          <!-- OCR & PDF Processing Indicator -->
+          <div class="ocr-progress-box" id="ocrProgressBox" style="display: none;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700;">
+              <span id="ocrStatusMsg" style="color: var(--primary);">Scanning timetable...</span>
+              <span id="ocrPercentText" style="color: var(--primary);">0%</span>
+            </div>
+            <div class="ocr-progress-bar-wrap">
+              <div class="ocr-progress-bar-fill" id="ocrProgressBarFill"></div>
+            </div>
+            <p style="font-size: 0.72rem; color: var(--text-muted);">In-browser OCR engine extracting courses, days, and time slots directly from your document.</p>
           </div>
         </div>
 
@@ -448,7 +464,7 @@ Wednesday, 10:00 AM - 11:00 AM, Database Systems, CS204, Theory, Dr. Rao"></text
 
         <!-- Parsed Preview Screen (Shown after parsing) -->
         <div id="importPreviewArea" style="display: none; margin-top: 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
             <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary);">
               Parsed Timetable Preview (<span id="parsedSlotsCount">0</span> slots found)
             </h4>
@@ -695,6 +711,11 @@ Wednesday, 10:00 AM - 11:00 AM, Database Systems, CS204, Theory, Dr. Rao"></text
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toastContainer"></div>
 
+  <!-- Client-side PDF and OCR WebAssembly Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+  <!-- Application Engine -->
   <script src="app.js"></script>
 </body>
 </html>

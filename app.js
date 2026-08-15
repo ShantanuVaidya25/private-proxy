@@ -1,6 +1,6 @@
 /**
  * ATTENDFLOW - University Attendance & Timetable ERP Portal
- * Comprehensive University Grade Formula, Automated Timetable Upload & Parser
+ * Comprehensive University Grade Formula, Automated Timetable Upload (CSV, PDF & Photo OCR)
  */
 
 (function () {
@@ -25,6 +25,11 @@
     '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
     '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'
   ];
+
+  // Configure PDF.js Worker
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
 
   // --- Default University Sample Courses ---
   const DEFAULT_COURSES = [
@@ -172,7 +177,7 @@
   const closeSlotModalBtn = document.getElementById('closeSlotModalBtn');
   const cancelSlotModalBtn = document.getElementById('cancelSlotModalBtn');
 
-  // Upload Timetable Elements
+  // Upload Timetable Elements (CSV, PDF, OCR)
   const openUploadTimetableNavBtn = document.getElementById('openUploadTimetableNavBtn');
   const openUploadTimetableTabBtn = document.getElementById('openUploadTimetableTabBtn');
   const uploadTimetableModalOverlay = document.getElementById('uploadTimetableModalOverlay');
@@ -186,6 +191,10 @@
   const timetableFileInput = document.getElementById('timetableFileInput');
   const browseFileBtn = document.getElementById('browseFileBtn');
   const downloadSampleTemplateBtn = document.getElementById('downloadSampleTemplateBtn');
+  const ocrProgressBox = document.getElementById('ocrProgressBox');
+  const ocrStatusMsg = document.getElementById('ocrStatusMsg');
+  const ocrPercentText = document.getElementById('ocrPercentText');
+  const ocrProgressBarFill = document.getElementById('ocrProgressBarFill');
   const pasteTimetableText = document.getElementById('pasteTimetableText');
   const parsePastedTextBtn = document.getElementById('parsePastedTextBtn');
   const importPreviewArea = document.getElementById('importPreviewArea');
@@ -266,7 +275,6 @@
     }
   }
 
-  // --- Dates Setup ---
   function initDates() {
     const today = new Date().toISOString().split('T')[0];
     scheduleViewDate.value = today;
@@ -836,11 +844,12 @@
     });
   }
 
-  // --- Automated Timetable Upload & Parser Engine ---
+  // --- Automated Timetable Upload & OCR/PDF Parser Engine ---
 
   window.openUploadTimetableModal = function() {
     uploadTimetableModalOverlay.classList.add('active');
     importPreviewArea.style.display = 'none';
+    ocrProgressBox.style.display = 'none';
     currentParsedSlots = [];
   };
 
@@ -849,6 +858,7 @@
     timetableFileInput.value = '';
     pasteTimetableText.value = '';
     importPreviewArea.style.display = 'none';
+    ocrProgressBox.style.display = 'none';
     currentParsedSlots = [];
   }
 
@@ -888,103 +898,195 @@
     return 'mon';
   }
 
-  function parseCSVTimetable(csvText) {
-    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+  function updateOCRProgress(msg, percent) {
+    ocrProgressBox.style.display = 'block';
+    ocrStatusMsg.textContent = msg;
+    ocrPercentText.textContent = `${Math.round(percent)}%`;
+    ocrProgressBarFill.style.width = `${Math.round(percent)}%`;
+  }
+
+  async function extractTextFromPDF(file) {
+    if (!window.pdfjsLib) throw new Error('PDF.js library is not loaded');
+
+    updateOCRProgress('Loading PDF document...', 20);
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let fullText = '';
+    const numPages = pdf.numPages;
+
+    for (let i = 1; i <= numPages; i++) {
+      updateOCRProgress(`Extracting PDF page ${i} of ${numPages}...`, 20 + (i / numPages) * 70);
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map(item => item.str).join(' ');
+      fullText += pageText + '\n';
+    }
+
+    updateOCRProgress('PDF extracted successfully!', 100);
+    return fullText;
+  }
+
+  async function extractTextFromImage(file) {
+    if (!window.Tesseract) throw new Error('Tesseract OCR engine is not loaded');
+
+    updateOCRProgress('Initializing OCR engine...', 10);
+
+    const result = await window.Tesseract.recognize(file, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          updateOCRProgress('Scanning photo text...', Math.round(m.progress * 90));
+        }
+      }
+    });
+
+    updateOCRProgress('Photo scanned successfully!', 100);
+    return result.data.text;
+  }
+
+  /**
+   * Universal Timetable Text Parser (Handles CSV, freeform text, and noisy OCR results)
+   */
+  function parseTimetableContent(rawText) {
+    if (!rawText) return [];
+    
+    // Split into lines
+    const lines = rawText.split(/\r?\n/).filter(line => line.trim() !== '');
     if (lines.length === 0) return [];
 
     const slots = [];
-    let startIdx = 0;
+    const dayRegex = /(monday|tuesday|wednesday|thursday|friday|saturday|mon|tue|wed|thu|fri|sat)/i;
+    const timeRegex = /(\d{1,2}[:.]\d{2}\s*(?:am|pm)?\s*[-–toTO]\s*\d{1,2}[:.]\d{2}\s*(?:am|pm)?|\d{1,2}\s*(?:am|pm)\s*[-–toTO]\s*\d{1,2}\s*(?:am|pm))/i;
+    const codeRegex = /\b([A-Z]{2,4}\s*\d{3}[A-Z]?)\b/i;
 
-    // Check if first line is a header
-    const firstLineLower = lines[0].toLowerCase();
-    if (firstLineLower.includes('day') || firstLineLower.includes('course') || firstLineLower.includes('time')) {
-      startIdx = 1;
-    }
+    let currentDay = 'mon';
 
-    for (let i = startIdx; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
+    lines.forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
 
-      // Handle simple CSV splitting with optional quotes
-      const row = [];
-      let inQuote = false;
-      let cur = '';
+      // Check CSV row format
+      if (trimmed.includes(',') || trimmed.includes('\t') || trimmed.includes(';')) {
+        const row = [];
+        let inQuote = false;
+        let cur = '';
 
-      for (let char of line) {
-        if (char === '"' || char === "'") {
-          inQuote = !inQuote;
-        } else if ((char === ',' || char === '\t' || char === ';') && !inQuote) {
-          row.push(cur.trim());
-          cur = '';
-        } else {
-          cur += char;
+        for (let char of trimmed) {
+          if (char === '"' || char === "'") inQuote = !inQuote;
+          else if ((char === ',' || char === '\t' || char === ';') && !inQuote) {
+            row.push(cur.trim());
+            cur = '';
+          } else cur += char;
+        }
+        row.push(cur.trim());
+
+        // Ignore header line
+        const lowerFirst = row[0].toLowerCase();
+        if (lowerFirst.includes('day') || lowerFirst.includes('course') || lowerFirst.includes('time')) return;
+
+        if (row.length >= 2) {
+          const day = normalizeDay(row[0]);
+          const time = row[1] || '09:00 AM - 10:00 AM';
+          const courseName = row[2] || 'Lecture';
+          const courseCode = row[3] || '';
+          const type = (row[4] && row[4].toLowerCase().includes('lab')) ? 'lab' : 'theory';
+          const faculty = row[5] || 'Faculty';
+          slots.push({ day, time, courseName, courseCode, type, faculty });
+          return;
         }
       }
-      row.push(cur.trim());
 
-      if (row.length >= 2) {
-        const day = normalizeDay(row[0]);
-        const time = row[1] || '09:00 AM - 10:00 AM';
-        const courseName = row[2] || 'Lecture Class';
-        const courseCode = row[3] || '';
-        const type = (row[4] && row[4].toLowerCase().includes('lab')) ? 'lab' : 'theory';
-        const faculty = row[5] || 'Faculty';
-
-        slots.push({ day, time, courseName, courseCode, type, faculty });
+      // OCR / Freeform Text Pattern Matching
+      const dayMatch = trimmed.match(dayRegex);
+      if (dayMatch) {
+        currentDay = normalizeDay(dayMatch[1]);
       }
-    }
+
+      const timeMatch = trimmed.match(timeRegex);
+      const codeMatch = trimmed.match(codeRegex);
+
+      if (timeMatch || (dayMatch && trimmed.length > 15)) {
+        const time = timeMatch ? timeMatch[0].trim() : '09:00 AM - 10:00 AM';
+        const courseCode = codeMatch ? codeMatch[1].trim() : '';
+        
+        // Clean course name from line
+        let nameCandidate = trimmed
+          .replace(dayRegex, '')
+          .replace(timeRegex, '')
+          .replace(codeRegex, '')
+          .replace(/[|,\-–:;]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (!nameCandidate || nameCandidate.length < 3) {
+          nameCandidate = courseCode ? `Course ${courseCode}` : 'University Lecture';
+        }
+
+        const isLab = /lab|practical|workshop|studio/i.test(trimmed);
+        const type = isLab ? 'lab' : 'theory';
+
+        const facultyMatch = trimmed.match(/(Dr\.?\s+[A-Za-z]+|Prof\.?\s+[A-Za-z]+)/i);
+        const faculty = facultyMatch ? facultyMatch[1] : 'Faculty';
+
+        slots.push({
+          day: currentDay,
+          time: time,
+          courseName: nameCandidate,
+          courseCode: courseCode,
+          type: type,
+          faculty: faculty
+        });
+      }
+    });
 
     return slots;
   }
 
-  function parseTextTimetable(rawText) {
-    return parseCSVTimetable(rawText);
-  }
-
-  function handleTimetableFile(file) {
+  async function handleTimetableFile(file) {
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const content = e.target.result;
-      let slots = [];
+    try {
+      const fileName = file.name.toLowerCase();
+      let extractedText = '';
 
-      if (file.name.endsWith('.json')) {
+      if (fileName.endsWith('.pdf')) {
+        extractedText = await extractTextFromPDF(file);
+      } else if (file.type.startsWith('image/') || /\.(png|jpg|jpeg|webp)$/i.test(fileName)) {
+        extractedText = await extractTextFromImage(file);
+      } else if (fileName.endsWith('.json')) {
+        const content = await file.text();
         try {
           const parsed = JSON.parse(content);
-          if (Array.isArray(parsed)) slots = parsed;
-          else if (parsed.timetable) slots = parsed.timetable;
-          else if (parsed.courses) {
-            parsed.courses.forEach(c => {
-              (c.timetable || []).forEach(t => {
-                slots.push({
-                  day: normalizeDay(t.day),
-                  time: t.time,
-                  courseName: c.name,
-                  courseCode: c.code,
-                  type: c.type || 'theory',
-                  faculty: c.faculty || 'Faculty'
-                });
-              });
-            });
+          if (Array.isArray(parsed)) {
+            displayImportPreview(parsed);
+            return;
           }
-        } catch (err) {
-          showToast('Invalid JSON file format', 'danger');
-          return;
-        }
+        } catch (e) {}
+        extractedText = content;
       } else {
-        slots = parseCSVTimetable(content);
+        extractedText = await file.text();
       }
 
+      // Populate paste text area for user review as well
+      pasteTimetableText.value = extractedText;
+
+      const slots = parseTimetableContent(extractedText);
+
       if (slots.length === 0) {
-        showToast('No valid timetable slots could be parsed from file.', 'warning');
+        showToast('No timetable slots detected. You can paste and adjust text in the "Paste Text" tab.', 'warning');
         return;
       }
 
       displayImportPreview(slots);
-    };
-
-    reader.readAsText(file);
+      showToast(`Parsed ${slots.length} timetable slots successfully!`, 'success');
+    } catch (err) {
+      console.error('Error handling timetable file:', err);
+      showToast('Error processing file: ' + (err.message || 'Unknown error'), 'danger');
+    } finally {
+      setTimeout(() => {
+        ocrProgressBox.style.display = 'none';
+      }, 1500);
+    }
   }
 
   function displayImportPreview(slots) {
@@ -992,7 +1094,6 @@
     parsedSlotsCount.textContent = slots.length;
     importPreviewTableBody.innerHTML = '';
 
-    // Count how many new courses will be created
     let newCourseCount = 0;
     const detectedCourseNames = new Set();
 
@@ -1031,7 +1132,6 @@
 
     const mode = document.querySelector('input[name="importMode"]:checked').value;
 
-    // If replace mode, clear timetable arrays of all courses
     if (mode === 'replace') {
       courses.forEach(c => c.timetable = []);
     }
@@ -1039,13 +1139,11 @@
     let colorIdx = courses.length % COLOR_PALETTE.length;
 
     currentParsedSlots.forEach(slot => {
-      // Find matching course
       let targetCourse = courses.find(c => 
         c.name.toLowerCase() === slot.courseName.toLowerCase() ||
         (slot.courseCode && c.code && c.code.toLowerCase() === slot.courseCode.toLowerCase())
       );
 
-      // If course doesn't exist, create it
       if (!targetCourse) {
         targetCourse = {
           id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
@@ -1065,7 +1163,6 @@
         colorIdx++;
       }
 
-      // Add timetable slot if not already present
       if (!targetCourse.timetable) targetCourse.timetable = [];
       const alreadyHasSlot = targetCourse.timetable.some(t => t.day === slot.day && t.time === slot.time);
       if (!alreadyHasSlot) {
@@ -1080,7 +1177,7 @@
     closeUploadTimetableModal();
     renderAll();
     switchTab('schedule');
-    showToast(`Successfully applied ${currentParsedSlots.length} timetable slots to your schedule!`, 'success');
+    showToast(`Applied ${currentParsedSlots.length} timetable slots to your schedule!`, 'success');
   }
 
   // --- Attendance Record Action ---
@@ -1449,7 +1546,7 @@
     cancelSlotModalBtn.addEventListener('click', closeSlotModal);
     slotForm.addEventListener('submit', handleSlotFormSubmit);
 
-    // Upload Timetable listeners
+    // Upload Timetable listeners (CSV, PDF, Photo OCR)
     if (openUploadTimetableNavBtn) openUploadTimetableNavBtn.addEventListener('click', openUploadTimetableModal);
     if (openUploadTimetableTabBtn) openUploadTimetableTabBtn.addEventListener('click', openUploadTimetableModal);
     closeUploadModalBtn.addEventListener('click', closeUploadTimetableModal);
@@ -1496,7 +1593,7 @@
         showToast('Please paste your timetable text first.', 'warning');
         return;
       }
-      const slots = parseTextTimetable(text);
+      const slots = parseTimetableContent(text);
       if (slots.length === 0) {
         showToast('Could not parse valid timetable rows from text.', 'danger');
         return;

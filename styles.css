@@ -380,7 +380,6 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* University Exam Eligibility Tag */
 .exam-status-badge {
   display: inline-flex;
   align-items: center;
@@ -664,7 +663,6 @@ body {
   justify-content: center;
 }
 
-/* Timetable Routine Cards */
 .schedule-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -746,7 +744,6 @@ body {
   margin-top: auto;
 }
 
-/* 4 University Status Action Buttons */
 .status-btn {
   padding: 0.5rem 0.25rem;
   border-radius: var(--radius-sm);
@@ -870,7 +867,6 @@ body {
   background: var(--danger-bg);
 }
 
-/* Formula & Progress */
 .subject-formula-display {
   display: flex;
   align-items: baseline;
@@ -1103,10 +1099,10 @@ body {
 .slot-delete-btn:hover { color: var(--danger); }
 
 /* ==========================================================
-   UPLOAD TIMETABLE DROPZONE & MODAL
+   UPLOAD TIMETABLE DROPZONE, OCR & PDF SCANNER
    ========================================================== */
 .upload-modal-dialog {
-  max-width: 680px;
+  max-width: 720px;
 }
 
 .upload-modal-tabs {
@@ -1139,7 +1135,7 @@ body {
   border: 2px dashed var(--primary);
   background: rgba(99, 102, 241, 0.05);
   border-radius: var(--radius-lg);
-  padding: 2.5rem 1.5rem;
+  padding: 2.25rem 1.5rem;
   text-align: center;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -1157,14 +1153,50 @@ body {
 }
 
 .dropzone-icon {
-  width: 52px;
-  height: 52px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
   background: var(--primary-light);
   color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.supported-formats-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.format-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.format-badge.ocr {
+  background: var(--purple-bg);
+  border-color: var(--purple-border);
+  color: var(--purple);
+}
+
+.format-badge.pdf {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.format-badge.csv {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success);
 }
 
 .template-download-pill {
@@ -1186,6 +1218,35 @@ body {
 .template-download-pill:hover {
   filter: brightness(1.15);
   transform: translateY(-1px);
+}
+
+/* OCR & PDF Processing Indicator */
+.ocr-progress-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: center;
+  margin-top: 0.75rem;
+}
+
+.ocr-progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.ocr-progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #6366f1, #a855f7);
+  border-radius: var(--radius-full);
+  transition: width 0.2s ease;
 }
 
 .import-preview-table-wrap {
