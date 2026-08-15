@@ -1,6 +1,6 @@
 /**
  * ATTENDFLOW - University Attendance & Timetable ERP Portal
- * Comprehensive University Grade Formula & Management
+ * Comprehensive University Grade Formula, Automated Timetable Upload & Parser
  */
 
 (function () {
@@ -19,6 +19,11 @@
     { key: 'thu', label: 'Thursday' },
     { key: 'fri', label: 'Friday' },
     { key: 'sat', label: 'Saturday' }
+  ];
+
+  const COLOR_PALETTE = [
+    '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e',
+    '#f59e0b', '#10b981', '#06b6d4', '#3b82f6'
   ];
 
   // --- Default University Sample Courses ---
@@ -98,6 +103,7 @@
   let courses = loadCourses();
   let selectedColor = '#6366f1';
   let activeHistoryCourseId = null;
+  let currentParsedSlots = [];
 
   // --- DOM Elements ---
   const themeToggleBtn = document.getElementById('themeToggleBtn');
@@ -165,6 +171,28 @@
   const slotTimeInput = document.getElementById('slotTimeInput');
   const closeSlotModalBtn = document.getElementById('closeSlotModalBtn');
   const cancelSlotModalBtn = document.getElementById('cancelSlotModalBtn');
+
+  // Upload Timetable Elements
+  const openUploadTimetableNavBtn = document.getElementById('openUploadTimetableNavBtn');
+  const openUploadTimetableTabBtn = document.getElementById('openUploadTimetableTabBtn');
+  const uploadTimetableModalOverlay = document.getElementById('uploadTimetableModalOverlay');
+  const closeUploadModalBtn = document.getElementById('closeUploadModalBtn');
+  const cancelUploadModalBtn = document.getElementById('cancelUploadModalBtn');
+  const tabUploadFileBtn = document.getElementById('tabUploadFileBtn');
+  const tabPasteTextBtn = document.getElementById('tabPasteTextBtn');
+  const uploadFileSection = document.getElementById('uploadFileSection');
+  const uploadPasteSection = document.getElementById('uploadPasteSection');
+  const timetableDropzone = document.getElementById('timetableDropzone');
+  const timetableFileInput = document.getElementById('timetableFileInput');
+  const browseFileBtn = document.getElementById('browseFileBtn');
+  const downloadSampleTemplateBtn = document.getElementById('downloadSampleTemplateBtn');
+  const pasteTimetableText = document.getElementById('pasteTimetableText');
+  const parsePastedTextBtn = document.getElementById('parsePastedTextBtn');
+  const importPreviewArea = document.getElementById('importPreviewArea');
+  const parsedSlotsCount = document.getElementById('parsedSlotsCount');
+  const newCoursesCountBadge = document.getElementById('newCoursesCountBadge');
+  const importPreviewTableBody = document.getElementById('importPreviewTableBody');
+  const confirmApplyTimetableBtn = document.getElementById('confirmApplyTimetableBtn');
 
   // Course Modal
   const subjectModalOverlay = document.getElementById('subjectModalOverlay');
@@ -254,7 +282,6 @@
       const v2Data = localStorage.getItem(STORAGE_KEY);
       if (v2Data) return JSON.parse(v2Data);
 
-      // Check migration from v1
       const v1Data = localStorage.getItem(OLD_STORAGE_KEY);
       if (v1Data) {
         const parsedV1 = JSON.parse(v1Data);
@@ -309,11 +336,6 @@
   };
 
   // --- University Attendance Math Engine ---
-  /**
-   * Calculates subject stats taking into account:
-   * - Course weight (e.g. Theory = 1, Lab = 2)
-   * - University statuses: present (+weight, +weight), od (+weight, +weight), absent (0, +weight), cancelled (0, 0)
-   */
   function calculateCourseStats(course) {
     const weight = course.type === 'lab' ? 2 : 1;
     const logs = course.logs || [];
@@ -347,7 +369,6 @@
     const percentage = total > 0 ? (attended / total) * 100 : 0;
     const formattedPercentage = total > 0 ? percentage.toFixed(1) : '0.0';
 
-    // Exam Eligibility / Safety Status
     let status = 'safe';
     let examStatus = 'Eligible for Exams';
 
@@ -365,7 +386,6 @@
       examStatus = 'Debarred / Defaulter (<65%)';
     }
 
-    // Forecast Calculation
     let forecast = '';
     let bunkCount = 0;
     let attendNeeded = 0;
@@ -405,9 +425,6 @@
     };
   }
 
-  /**
-   * Overall University Attendance Aggregate
-   */
   function calculateOverallStats() {
     let totalAttended = 0;
     let totalClasses = 0;
@@ -431,7 +448,7 @@
 
     if (courses.length === 0) {
       examStatus = 'No Courses';
-      forecast = 'Click "+ Add Course" to configure your semester subjects.';
+      forecast = 'Click "+ Add Course" or "Upload Timetable" to configure your semester subjects.';
     } else if (totalClasses === 0) {
       examStatus = 'Semester Start';
       forecast = 'Mark attendance from today\'s timetable to monitor progress.';
@@ -495,18 +512,15 @@
     totalClassesVal.textContent = stats.totalClasses;
     totalPercentageVal.textContent = `${stats.formattedPercentage}%`;
 
-    // Exam Badge
     examEligibilityBadge.className = `exam-status-badge ${stats.status}`;
     examEligibilityBadge.textContent = stats.examStatus;
 
-    // Forecast Box
     overallForecastBox.className = `forecast-box ${stats.status}`;
     forecastIcon.textContent = stats.icon;
     overallForecastText.textContent = stats.forecast;
 
-    // Radial Progress
     const radius = 55;
-    const circumference = 2 * Math.PI * radius; // ~345.57
+    const circumference = 2 * Math.PI * radius;
     overallRadialBar.style.strokeDasharray = `${circumference}`;
     const offset = stats.totalClasses > 0 
       ? circumference - (circumference * (stats.percentage / 100))
@@ -526,12 +540,9 @@
     statTotalOD.textContent = stats.totalOD;
   }
 
-  /**
-   * Returns list of scheduled slots for a given date.
-   */
   function getScheduledSlotsForDate(dateStr) {
     const dateObj = new Date(dateStr + 'T00:00:00');
-    const dayIndex = dateObj.getDay(); // 0 = Sun, 1 = Mon ...
+    const dayIndex = dateObj.getDay();
     const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     const currentDayKey = dayKeys[dayIndex];
 
@@ -547,7 +558,6 @@
       });
     });
 
-    // If no timetable slots configured for today, return all courses as daily roster
     if (slots.length === 0) {
       courses.forEach(course => {
         slots.push({
@@ -568,7 +578,7 @@
     if (slots.length === 0) {
       dashboardSchedulePreview.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 2rem; color: var(--text-muted);">
-          No lectures scheduled for today. Enjoy your day or add slots in the Timetable Setup tab!
+          No lectures scheduled for today. Enjoy your day or upload your timetable!
         </div>
       `;
       return;
@@ -655,7 +665,7 @@
       subjectsGrid.innerHTML = `
         <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; background: var(--bg-card); border-radius: var(--radius-lg); border: 2px dashed var(--border-color);">
           <h3>No courses found</h3>
-          <p style="color: var(--text-secondary); margin-top: 0.5rem;">Click "+ Add Course" to register courses in your semester.</p>
+          <p style="color: var(--text-secondary); margin-top: 0.5rem;">Click "+ Add Course" or upload your timetable.</p>
         </div>
       `;
       return;
@@ -826,6 +836,253 @@
     });
   }
 
+  // --- Automated Timetable Upload & Parser Engine ---
+
+  window.openUploadTimetableModal = function() {
+    uploadTimetableModalOverlay.classList.add('active');
+    importPreviewArea.style.display = 'none';
+    currentParsedSlots = [];
+  };
+
+  function closeUploadTimetableModal() {
+    uploadTimetableModalOverlay.classList.remove('active');
+    timetableFileInput.value = '';
+    pasteTimetableText.value = '';
+    importPreviewArea.style.display = 'none';
+    currentParsedSlots = [];
+  }
+
+  function downloadSampleCSVTemplate() {
+    const csvContent = "Day,Time,Course Name,Course Code,Type,Faculty\n" +
+      "Monday,09:00 AM - 10:00 AM,Data Structures & Algorithms,CS201,Theory,Dr. A. Sharma\n" +
+      "Monday,11:00 AM - 12:00 PM,Database Management Systems,CS204,Theory,Dr. V. Rao\n" +
+      "Tuesday,10:00 AM - 11:00 AM,Database Management Systems,CS204,Theory,Dr. V. Rao\n" +
+      "Tuesday,02:00 PM - 04:00 PM,Computer Networks Lab,CS302L,Lab,Prof. R. Mehta\n" +
+      "Wednesday,10:00 AM - 11:00 AM,Data Structures & Algorithms,CS201,Theory,Dr. A. Sharma\n" +
+      "Thursday,09:00 AM - 10:00 AM,Database Management Systems,CS204,Theory,Dr. V. Rao\n" +
+      "Thursday,02:00 PM - 04:00 PM,Computer Networks Lab,CS302L,Lab,Prof. R. Mehta\n" +
+      "Friday,11:00 AM - 12:00 PM,Data Structures & Algorithms,CS201,Theory,Dr. A. Sharma\n" +
+      "Saturday,10:00 AM - 12:00 PM,Software Engineering Workshop,CS401,Lab,Prof. K. Singh\n";
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'sample_university_timetable.csv');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    showToast('Downloaded sample timetable CSV template!', 'success');
+  }
+
+  function normalizeDay(dayStr) {
+    if (!dayStr) return 'mon';
+    const str = dayStr.trim().toLowerCase();
+    if (str.startsWith('mon')) return 'mon';
+    if (str.startsWith('tue')) return 'tue';
+    if (str.startsWith('wed')) return 'wed';
+    if (str.startsWith('thu')) return 'thu';
+    if (str.startsWith('fri')) return 'fri';
+    if (str.startsWith('sat')) return 'sat';
+    if (str.startsWith('sun')) return 'sun';
+    return 'mon';
+  }
+
+  function parseCSVTimetable(csvText) {
+    const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
+    if (lines.length === 0) return [];
+
+    const slots = [];
+    let startIdx = 0;
+
+    // Check if first line is a header
+    const firstLineLower = lines[0].toLowerCase();
+    if (firstLineLower.includes('day') || firstLineLower.includes('course') || firstLineLower.includes('time')) {
+      startIdx = 1;
+    }
+
+    for (let i = startIdx; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+
+      // Handle simple CSV splitting with optional quotes
+      const row = [];
+      let inQuote = false;
+      let cur = '';
+
+      for (let char of line) {
+        if (char === '"' || char === "'") {
+          inQuote = !inQuote;
+        } else if ((char === ',' || char === '\t' || char === ';') && !inQuote) {
+          row.push(cur.trim());
+          cur = '';
+        } else {
+          cur += char;
+        }
+      }
+      row.push(cur.trim());
+
+      if (row.length >= 2) {
+        const day = normalizeDay(row[0]);
+        const time = row[1] || '09:00 AM - 10:00 AM';
+        const courseName = row[2] || 'Lecture Class';
+        const courseCode = row[3] || '';
+        const type = (row[4] && row[4].toLowerCase().includes('lab')) ? 'lab' : 'theory';
+        const faculty = row[5] || 'Faculty';
+
+        slots.push({ day, time, courseName, courseCode, type, faculty });
+      }
+    }
+
+    return slots;
+  }
+
+  function parseTextTimetable(rawText) {
+    return parseCSVTimetable(rawText);
+  }
+
+  function handleTimetableFile(file) {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const content = e.target.result;
+      let slots = [];
+
+      if (file.name.endsWith('.json')) {
+        try {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed)) slots = parsed;
+          else if (parsed.timetable) slots = parsed.timetable;
+          else if (parsed.courses) {
+            parsed.courses.forEach(c => {
+              (c.timetable || []).forEach(t => {
+                slots.push({
+                  day: normalizeDay(t.day),
+                  time: t.time,
+                  courseName: c.name,
+                  courseCode: c.code,
+                  type: c.type || 'theory',
+                  faculty: c.faculty || 'Faculty'
+                });
+              });
+            });
+          }
+        } catch (err) {
+          showToast('Invalid JSON file format', 'danger');
+          return;
+        }
+      } else {
+        slots = parseCSVTimetable(content);
+      }
+
+      if (slots.length === 0) {
+        showToast('No valid timetable slots could be parsed from file.', 'warning');
+        return;
+      }
+
+      displayImportPreview(slots);
+    };
+
+    reader.readAsText(file);
+  }
+
+  function displayImportPreview(slots) {
+    currentParsedSlots = slots;
+    parsedSlotsCount.textContent = slots.length;
+    importPreviewTableBody.innerHTML = '';
+
+    // Count how many new courses will be created
+    let newCourseCount = 0;
+    const detectedCourseNames = new Set();
+
+    slots.forEach(slot => {
+      const exists = courses.some(c => 
+        c.name.toLowerCase() === slot.courseName.toLowerCase() || 
+        (slot.courseCode && c.code && c.code.toLowerCase() === slot.courseCode.toLowerCase())
+      );
+
+      if (!exists && !detectedCourseNames.has(slot.courseName.toLowerCase())) {
+        newCourseCount++;
+        detectedCourseNames.add(slot.courseName.toLowerCase());
+      }
+
+      const tr = document.createElement('tr');
+      const dayObj = DAYS.find(d => d.key === slot.day) || { label: slot.day };
+
+      tr.innerHTML = `
+        <td style="font-weight: 700; color: var(--primary);">${dayObj.label}</td>
+        <td>${escapeHtml(slot.time)}</td>
+        <td style="font-weight: 700;">${escapeHtml(slot.courseName)} ${!exists ? '<span style="font-size:0.65rem; color:var(--success);">(New)</span>' : ''}</td>
+        <td><span style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(slot.courseCode || '-')}</span></td>
+        <td><span class="course-type-pill ${slot.type}">${slot.type}</span></td>
+        <td style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(slot.faculty || '-')}</td>
+      `;
+
+      importPreviewTableBody.appendChild(tr);
+    });
+
+    newCoursesCountBadge.textContent = `${newCourseCount} New Course${newCourseCount !== 1 ? 's' : ''} will be created`;
+    importPreviewArea.style.display = 'block';
+  }
+
+  function applyParsedTimetable() {
+    if (currentParsedSlots.length === 0) return;
+
+    const mode = document.querySelector('input[name="importMode"]:checked').value;
+
+    // If replace mode, clear timetable arrays of all courses
+    if (mode === 'replace') {
+      courses.forEach(c => c.timetable = []);
+    }
+
+    let colorIdx = courses.length % COLOR_PALETTE.length;
+
+    currentParsedSlots.forEach(slot => {
+      // Find matching course
+      let targetCourse = courses.find(c => 
+        c.name.toLowerCase() === slot.courseName.toLowerCase() ||
+        (slot.courseCode && c.code && c.code.toLowerCase() === slot.courseCode.toLowerCase())
+      );
+
+      // If course doesn't exist, create it
+      if (!targetCourse) {
+        targetCourse = {
+          id: 'sub_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+          name: slot.courseName,
+          code: slot.courseCode || '',
+          type: slot.type || 'theory',
+          faculty: slot.faculty || 'Faculty',
+          targetPercentage: DEFAULT_TARGET,
+          color: COLOR_PALETTE[colorIdx % COLOR_PALETTE.length],
+          baseAttended: 0,
+          baseTotal: 0,
+          timetable: [],
+          logs: [],
+          createdAt: Date.now()
+        };
+        courses.push(targetCourse);
+        colorIdx++;
+      }
+
+      // Add timetable slot if not already present
+      if (!targetCourse.timetable) targetCourse.timetable = [];
+      const alreadyHasSlot = targetCourse.timetable.some(t => t.day === slot.day && t.time === slot.time);
+      if (!alreadyHasSlot) {
+        targetCourse.timetable.push({
+          day: slot.day,
+          time: slot.time
+        });
+      }
+    });
+
+    saveCourses();
+    closeUploadTimetableModal();
+    renderAll();
+    switchTab('schedule');
+    showToast(`Successfully applied ${currentParsedSlots.length} timetable slots to your schedule!`, 'success');
+  }
+
   // --- Attendance Record Action ---
   function recordAttendance(courseId, dateStr, status) {
     const course = courses.find(c => c.id === courseId);
@@ -885,7 +1142,7 @@
     showToast(`Marked all scheduled classes present for ${formatDate(selectedDate)}!`, 'success');
   }
 
-  // --- Modals Logic ---
+  // --- Course Modals Logic ---
   function openAddCourseModal() {
     subjectModalTitle.textContent = 'Add Course / Practical';
     editSubjectId.value = '';
@@ -1192,6 +1449,63 @@
     cancelSlotModalBtn.addEventListener('click', closeSlotModal);
     slotForm.addEventListener('submit', handleSlotFormSubmit);
 
+    // Upload Timetable listeners
+    if (openUploadTimetableNavBtn) openUploadTimetableNavBtn.addEventListener('click', openUploadTimetableModal);
+    if (openUploadTimetableTabBtn) openUploadTimetableTabBtn.addEventListener('click', openUploadTimetableModal);
+    closeUploadModalBtn.addEventListener('click', closeUploadTimetableModal);
+    cancelUploadModalBtn.addEventListener('click', closeUploadTimetableModal);
+    downloadSampleTemplateBtn.addEventListener('click', downloadSampleCSVTemplate);
+    browseFileBtn.addEventListener('click', () => timetableFileInput.click());
+    timetableFileInput.addEventListener('change', e => {
+      if (e.target.files[0]) handleTimetableFile(e.target.files[0]);
+    });
+
+    // Drag and Drop on dropzone
+    timetableDropzone.addEventListener('dragover', e => {
+      e.preventDefault();
+      timetableDropzone.classList.add('dragover');
+    });
+    timetableDropzone.addEventListener('dragleave', () => {
+      timetableDropzone.classList.remove('dragover');
+    });
+    timetableDropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      timetableDropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        handleTimetableFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    // Paste text tab switching
+    tabUploadFileBtn.addEventListener('click', () => {
+      tabUploadFileBtn.classList.add('active');
+      tabPasteTextBtn.classList.remove('active');
+      uploadFileSection.style.display = 'block';
+      uploadPasteSection.style.display = 'none';
+    });
+    tabPasteTextBtn.addEventListener('click', () => {
+      tabPasteTextBtn.classList.add('active');
+      tabUploadFileBtn.classList.remove('active');
+      uploadFileSection.style.display = 'none';
+      uploadPasteSection.style.display = 'block';
+    });
+
+    parsePastedTextBtn.addEventListener('click', () => {
+      const text = pasteTimetableText.value.trim();
+      if (!text) {
+        showToast('Please paste your timetable text first.', 'warning');
+        return;
+      }
+      const slots = parseTextTimetable(text);
+      if (slots.length === 0) {
+        showToast('Could not parse valid timetable rows from text.', 'danger');
+        return;
+      }
+      displayImportPreview(slots);
+    });
+
+    confirmApplyTimetableBtn.addEventListener('click', applyParsedTimetable);
+
     // Color picker
     colorPickerGroup.addEventListener('click', e => {
       const opt = e.target.closest('.color-option');
@@ -1270,6 +1584,7 @@
     subjectModalOverlay.addEventListener('click', e => { if (e.target === subjectModalOverlay) closeCourseModal(); });
     slotModalOverlay.addEventListener('click', e => { if (e.target === slotModalOverlay) closeSlotModal(); });
     historyModalOverlay.addEventListener('click', e => { if (e.target === historyModalOverlay) closeHistoryModal(); });
+    uploadTimetableModalOverlay.addEventListener('click', e => { if (e.target === uploadTimetableModalOverlay) closeUploadTimetableModal(); });
 
     // Export / Import
     exportDataBtn.addEventListener('click', exportBackupData);
@@ -1282,6 +1597,7 @@
         closeCourseModal();
         closeSlotModal();
         closeHistoryModal();
+        closeUploadTimetableModal();
       }
     });
   }

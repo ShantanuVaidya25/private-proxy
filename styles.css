@@ -282,6 +282,16 @@ body {
   border-color: var(--text-muted);
 }
 
+.btn-accent {
+  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(14, 165, 233, 0.35);
+}
+.btn-accent:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.45);
+}
+
 .btn-icon {
   width: 40px;
   height: 40px;
@@ -1093,12 +1103,142 @@ body {
 .slot-delete-btn:hover { color: var(--danger); }
 
 /* ==========================================================
+   UPLOAD TIMETABLE DROPZONE & MODAL
+   ========================================================== */
+.upload-modal-dialog {
+  max-width: 680px;
+}
+
+.upload-modal-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 0.75rem;
+}
+
+.upload-tab-btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.upload-tab-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.upload-dropzone {
+  border: 2px dashed var(--primary);
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: var(--radius-lg);
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.upload-dropzone:hover, .upload-dropzone.dragover {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: #8b5cf6;
+  transform: scale(1.01);
+}
+
+.dropzone-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.template-download-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid var(--primary-glow);
+  transition: all var(--transition-fast);
+}
+
+.template-download-pill:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+
+.import-preview-table-wrap {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-top: 0.75rem;
+}
+
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.import-preview-table th {
+  background: var(--bg-input);
+  padding: 0.6rem 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  position: sticky;
+  top: 0;
+}
+
+.import-preview-table td {
+  padding: 0.55rem 0.8rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.import-options-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-input);
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  margin-top: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ==========================================================
    MODALS
    ========================================================== */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 1000;

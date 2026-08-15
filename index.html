@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="University Attendance Management System - Track lectures, practicals, weekly timetables, and bunk predictions.">
+  <meta name="description" content="University Attendance Management System - Track lectures, practicals, weekly timetables, and upload your schedule automatically.">
   <title>AttendFlow - University Attendance Portal</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -38,10 +38,21 @@
             <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
             <line x1="1" y1="12" x2="3" y2="12"></line>
             <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
           </svg>
           <svg id="themeMoonIcon" style="display:none;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
           </svg>
+        </button>
+
+        <button id="openUploadTimetableNavBtn" class="btn btn-accent" title="Upload Timetable File">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span>Upload Timetable</span>
         </button>
 
         <button id="exportDataBtn" class="btn btn-secondary" title="Export Backup JSON">
@@ -199,7 +210,10 @@
               <p style="font-size: 0.8rem; color: var(--text-secondary);" id="dashboardTodayDateStr">Today's routine</p>
             </div>
           </div>
-          <button class="btn btn-secondary" onclick="switchTab('schedule')">View Full Schedule &rarr;</button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-secondary" onclick="openUploadTimetableModal()">📤 Upload Timetable</button>
+            <button class="btn btn-primary" onclick="switchTab('schedule')">View Full Schedule &rarr;</button>
+          </div>
         </div>
 
         <div class="schedule-grid" id="dashboardSchedulePreview">
@@ -338,14 +352,24 @@
             </div>
             <div>
               <h3>Weekly Timetable Builder</h3>
-              <p style="font-size: 0.8rem; color: var(--text-secondary);">Assign your courses to days of the week and time slots</p>
+              <p style="font-size: 0.8rem; color: var(--text-secondary);">Assign your courses to days of the week or upload your entire timetable at once</p>
             </div>
           </div>
 
-          <button id="openAddSlotModalBtn" class="btn btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            <span>+ Add Slot to Timetable</span>
-          </button>
+          <div style="display: flex; gap: 0.65rem; flex-wrap: wrap;">
+            <button id="openUploadTimetableTabBtn" class="btn btn-accent">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+              <span>Upload Timetable</span>
+            </button>
+            <button id="openAddSlotModalBtn" class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>+ Add Single Slot</span>
+            </button>
+          </div>
         </div>
 
         <div class="timetable-days-grid" id="timetableSetupGrid">
@@ -354,6 +378,132 @@
       </section>
     </div>
 
+  </div>
+
+  <!-- ==========================================================
+       MODAL: Upload & Auto-Parse Weekly Timetable
+       ========================================================== -->
+  <div class="modal-overlay" id="uploadTimetableModalOverlay">
+    <div class="modal-dialog upload-modal-dialog">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title">Upload Weekly Timetable</h3>
+          <p style="font-size: 0.75rem; color: var(--text-secondary);">Upload CSV, JSON, or paste text to automatically build your schedule and courses</p>
+        </div>
+        <button class="modal-close-btn" id="closeUploadModalBtn" aria-label="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        
+        <!-- Input Method Tabs -->
+        <div class="upload-modal-tabs">
+          <button class="upload-tab-btn active" id="tabUploadFileBtn" data-target="uploadFileSection">Upload File (.csv / .json / .txt)</button>
+          <button class="upload-tab-btn" id="tabPasteTextBtn" data-target="uploadPasteSection">Paste Text Schedule</button>
+        </div>
+
+        <!-- Section 1: File Upload Dropzone -->
+        <div id="uploadFileSection">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+            <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-secondary);">Select or Drop your Timetable file</span>
+            <button type="button" class="template-download-pill" id="downloadSampleTemplateBtn" title="Download standard CSV format template">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <span>Download Sample CSV Template</span>
+            </button>
+          </div>
+
+          <div class="upload-dropzone" id="timetableDropzone">
+            <input type="file" id="timetableFileInput" accept=".csv,.json,.txt" style="display: none;">
+            <div class="dropzone-icon">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="12" y2="12"></line>
+                <line x1="15" y1="15" x2="12" y2="12"></line>
+              </svg>
+            </div>
+            <div>
+              <p style="font-weight: 800; font-size: 0.95rem;">Drag & drop your timetable file here</p>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.2rem;">Supports .CSV (Excel/Sheets), .JSON, or .TXT</p>
+            </div>
+            <button type="button" class="btn btn-secondary" id="browseFileBtn" style="font-size: 0.8rem; padding: 0.4rem 0.9rem;">Browse File</button>
+          </div>
+        </div>
+
+        <!-- Section 2: Paste Raw Text -->
+        <div id="uploadPasteSection" style="display: none;">
+          <div class="form-group">
+            <label class="form-label" for="pasteTimetableText">Paste Timetable Rows / Text</label>
+            <textarea id="pasteTimetableText" class="form-control" rows="6" placeholder="Example format:
+Monday, 09:00 AM - 10:00 AM, Data Structures & Algorithms, CS201, Theory, Dr. Sharma
+Tuesday, 02:00 PM - 04:00 PM, Networks Lab, CS302L, Lab, Prof. Mehta
+Wednesday, 10:00 AM - 11:00 AM, Database Systems, CS204, Theory, Dr. Rao"></textarea>
+            <button type="button" class="btn btn-primary" id="parsePastedTextBtn" style="margin-top: 0.5rem; align-self: flex-start;">
+              <span>Parse Pasted Text</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Parsed Preview Screen (Shown after parsing) -->
+        <div id="importPreviewArea" style="display: none; margin-top: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h4 style="font-size: 0.95rem; font-weight: 800; color: var(--text-primary);">
+              Parsed Timetable Preview (<span id="parsedSlotsCount">0</span> slots found)
+            </h4>
+            <span id="newCoursesCountBadge" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; border-radius: var(--radius-full); background: var(--success-bg); color: var(--success); font-weight: 700;">
+              0 New Courses
+            </span>
+          </div>
+
+          <div class="import-preview-table-wrap">
+            <table class="import-preview-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Time</th>
+                  <th>Course Name</th>
+                  <th>Code</th>
+                  <th>Type</th>
+                  <th>Faculty</th>
+                </tr>
+              </thead>
+              <tbody id="importPreviewTableBody">
+                <!-- Rows inserted dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Import Mode Selection -->
+          <div class="import-options-row">
+            <div>
+              <div style="font-weight: 700; font-size: 0.85rem;">Import Mode:</div>
+              <div style="display: flex; gap: 1rem; margin-top: 0.25rem; font-size: 0.8rem;">
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                  <input type="radio" name="importMode" value="replace" checked>
+                  <span>Replace entire timetable</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                  <input type="radio" name="importMode" value="merge">
+                  <span>Merge with current timetable</span>
+                </label>
+              </div>
+            </div>
+
+            <button type="button" class="btn btn-primary" id="confirmApplyTimetableBtn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Apply to Schedule</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelUploadModalBtn">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <!-- ==========================================================
@@ -508,7 +658,6 @@
           <div id="historyTargetStatusBadge" class="subject-percent-badge safe">75.0%</div>
         </div>
 
-        <!-- Add Custom Date Entry Form with 4 University Statuses -->
         <div>
           <label class="form-label" style="margin-bottom: 0.4rem; display: block;">Record Past Lecture Date</label>
           <form id="addHistoryEntryForm" class="history-add-entry-form">
